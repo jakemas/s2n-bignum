@@ -1311,7 +1311,6 @@ let x86_VPADDW = new_definition
         let res:(128)word = simd8 word_add (word_zx x) (word_zx y) in
         (dest := (word_zx res):N word) s`;;
 
-<<<<<<< HEAD
 let x86_VPADDD = new_definition
   `x86_VPADDD dest src1 src2 (s:x86state) =
       let (x:N word) = read src1 s
@@ -1321,7 +1320,8 @@ let x86_VPADDD = new_definition
         (dest := (word_zx res):N word) s
       else
         let res:(128)word = simd4 word_add (word_zx x) (word_zx y) in
-=======
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPBROADCASTD = new_definition
   `x86_VPBROADCASTD dest src (s:x86state) =
       let (x:N word) = read src s in
@@ -1332,8 +1332,6 @@ let x86_VPBROADCASTD = new_definition
       else
         let dw = word_extract (0,32) x in
         let res:(128)word = word_replicate 4 32 dw in
->>>>>>> pr-252
-        (dest := (word_zx res):N word) s`;;
 
 let x86_VPMULHW = new_definition
   `x86_VPMULHW dest src1 src2 (s:x86state) =
