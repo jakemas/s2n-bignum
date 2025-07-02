@@ -1332,6 +1332,7 @@ let x86_VPBROADCASTD = new_definition
       else
         let dw = word_extract (0,32) x in
         let res:(128)word = word_replicate 4 32 dw in
+        (dest := (word_zx res):N word) s`;;
 
 let x86_VPMULHW = new_definition
   `x86_VPMULHW dest src1 src2 (s:x86state) =
