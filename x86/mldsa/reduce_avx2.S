@@ -21,9 +21,14 @@ S2N_BN_SYM_VISIBILITY_DIRECTIVE(poly_reduce_avx2)
 S2N_BN_SYM_PRIVACY_DIRECTIVE(poly_reduce_avx2)
 _CET_ENDBR
 S2N_BN_SYMBOL(poly_reduce_avx2):
-    /* Load constants */
-    vpbroadcastd    .Lmldsa_q(%rip), %ymm0      /* q in all lanes */
-    vpbroadcastd    .Loffset(%rip), %ymm1       /* offset (1 << 22) in all lanes */
+    /* Load constants directly into registers */
+    mov             $MLDSA_Q, %eax              /* q */
+    vmovd           %eax, %xmm0                 /* Move q to xmm0 */
+    vpbroadcastd    %xmm0, %ymm0                /* Broadcast q to all lanes */
+    
+    mov             $(1 << 22), %eax            /* offset (1 << 22) */
+    vmovd           %eax, %xmm1                 /* Move offset to xmm1 */
+    vpbroadcastd    %xmm1, %ymm1                /* Broadcast offset to all lanes */
     
     /* Setup loop counter */
     xor             %rax, %rax                  /* byte offset = 0 */
@@ -53,11 +58,3 @@ S2N_BN_SYMBOL(poly_reduce_avx2):
     
     /* Return */
     ret
-
-/* Constants section */
-.section .rodata
-.balign 32                                      /* 32-byte alignment for AVX2 constants */
-.Lmldsa_q:
-    .int MLDSA_Q                                /* Only need one value for vpbroadcastd */
-.Loffset:
-    .int (1 << 22)                              /* Only need one value for vpbroadcastd */

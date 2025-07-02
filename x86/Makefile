@@ -387,7 +387,8 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              sm2/bignum_sub_sm2.o \
              sm2/bignum_tomont_sm2.o \
              sm2/bignum_triple_sm2.o \
-             sm2/bignum_triple_sm2_alt.o
+             sm2/bignum_triple_sm2_alt.o \
+             mldsa/reduce_avx2.o
 
 OBJ = $(POINT_OBJ) $(BIGNUM_OBJ)
 
