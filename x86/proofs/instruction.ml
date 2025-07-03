@@ -304,10 +304,12 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | SUB operand operand
    | TEST operand operand
    | TZCNT operand operand
+   | VMOVSHDUP operand operand
    | VPADDW operand operand operand
    | VPADDD operand operand operand
    | VPAND operand operand operand
    | VPBLENDD operand operand operand operand
+   | VPMULDQ operand operand operand
    | VPMULHW operand operand operand
    | VPMULLD operand operand operand 
    | VPMULLW operand operand operand

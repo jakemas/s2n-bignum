@@ -123,6 +123,8 @@
 : vpaddd$
 : vpand$
 : vpblendd$
+: vpmovshdup$
+: vpmuldq$
 : vpmulhw$
 : vpmulld$
 : vpmullw$
