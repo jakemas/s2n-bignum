@@ -79,6 +79,7 @@ let MLDSA_BUTTERFLY_INSTANCE_CORRECT = prove
                 abs(read YMM8 s) <= &2*q)
            (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
             MAYCHANGE [YMM12; YMM13; YMM14])`,
+
   (* Proof steps *)
   MAP_EVERY X_GEN_TAC [`l:int128`; `h:int128`; `zl:int128`; `zh:int128`; `q:int`; `qinv:int`; `pc:num`] THEN
   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
@@ -88,13 +89,47 @@ let MLDSA_BUTTERFLY_INSTANCE_CORRECT = prove
   ENSURES_INIT_TAC "s0" THEN
   
   (* Simulate the execution of each instruction *)
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [1] THEN
-  (* ... continue with simulation steps ... *)
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [1] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [2] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [3] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [4] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [5] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [6] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [7] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [8] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [9] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [10] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [11] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [12] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [13] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [14] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [15] THEN SIMD_SIMPLIFY_TAC[] THEN
+  X86_STEPS_TAC mldsa_butterfly_instance_mc [16] THEN
   
   (* Verify the final state *)
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   
   (* Prove that the final state matches the specification *)
-  (* ... proof steps ... *)
+  REWRITE_TAC[butterfly_spec; LET_DEF; LET_END_DEF] THEN
+  REWRITE_TAC[montgomery_multiply] THEN
+  SIMP_TAC[GSYM INT_ADD_ASSOC; INT_ADD_LID; INT_ADD_RID] THEN
+  SIMP_TAC[INT_MUL_ASSOC; INT_MUL_LID; INT_MUL_RID] THEN
+  CONV_TAC INT_REDUCE_CONV THEN
+  REWRITE_TAC[] THEN
+  CONJ_TAC THENL [
+    (* Prove bound for l' *)
+    MATCH_MP_TAC INT_BOUNDS_ADD THEN
+    ASM_REWRITE_TAC[] THEN
+    MATCH_MP_TAC INT_BOUNDS_MUL THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC INT_REDUCE_CONV;
+
+    (* Prove bound for h' *)
+    MATCH_MP_TAC INT_BOUNDS_SUB THEN
+    ASM_REWRITE_TAC[] THEN
+    MATCH_MP_TAC INT_BOUNDS_MUL THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC INT_REDUCE_CONV
+  ]
 );;
