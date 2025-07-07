@@ -13,10 +13,44 @@ needs "x86/proofs/mldsa_specs.ml";;
 needs "x86/proofs/mldsa_zetas.ml";;
 
 (* Import the machine code from the ELF file *)
+
+(**** print_literal_from_elf "x86/mldsa/mldsa_butterfly.o";;
+ ****)
+
 let mldsa_butterfly_instance_mc = define_assert_from_elf
  "mldsa_butterfly_instance_mc" "s2n-bignum/x86/mldsa/mldsa_butterfly.o"
 [
-  (* Machine code will be inserted here using print_literal_from_elf *)
+  0xc4; 0x42; 0x75; 0x28; 0xe8;
+                           (* VPMULDQ (%_% ymm13) (%_% ymm1) (%_% ymm8) *)
+  0xc4; 0x41; 0x7e; 0x16; 0xe0;
+                           (* VMOVSHDUP (%_% ymm12) (%_% ymm8) *)
+  0xc4; 0x42; 0x75; 0x28; 0xf4;
+                           (* VPMULDQ (%_% ymm14) (%_% ymm1) (%_% ymm12) *)
+  0xc4; 0x42; 0x6d; 0x28; 0xc0;
+                           (* VPMULDQ (%_% ymm8) (%_% ymm2) (%_% ymm8) *)
+  0xc4; 0x42; 0x6d; 0x28; 0xe4;
+                           (* VPMULDQ (%_% ymm12) (%_% ymm2) (%_% ymm12) *)
+  0xc4; 0x42; 0x7d; 0x28; 0xed;
+                           (* VPMULDQ (%_% ymm13) (%_% ymm0) (%_% ymm13) *)
+  0xc4; 0x42; 0x7d; 0x28; 0xf6;
+                           (* VPMULDQ (%_% ymm14) (%_% ymm0) (%_% ymm14) *)
+  0xc4; 0x41; 0x7e; 0x16; 0xc0;
+                           (* VMOVSHDUP (%_% ymm8) (%_% ymm8) *)
+  0xc4; 0x43; 0x3d; 0x02; 0xc4; 0xaa;
+                           (* VPBLENDD (%_% ymm8) (%_% ymm8) (%_% ymm12) (Imm8 (word 170)) *)
+  0xc4; 0x41; 0x5d; 0xfa; 0xe0;
+                           (* VPSUBD (%_% ymm12) (%_% ymm4) (%_% ymm8) *)
+  0xc4; 0xc1; 0x5d; 0xfe; 0xe0;
+                           (* VPADDD (%_% ymm4) (%_% ymm4) (%_% ymm8) *)
+  0xc4; 0x41; 0x7e; 0x16; 0xed;
+                           (* VMOVSHDUP (%_% ymm13) (%_% ymm13) *)
+  0xc4; 0x43; 0x15; 0x02; 0xee; 0xaa;
+                           (* VPBLENDD (%_% ymm13) (%_% ymm13) (%_% ymm14) (Imm8 (word 170)) *)
+  0xc4; 0x41; 0x1d; 0xfe; 0xc5;
+                           (* VPADDD (%_% ymm8) (%_% ymm12) (%_% ymm13) *)
+  0xc4; 0xc1; 0x5d; 0xfa; 0xe5;
+                           (* VPSUBD (%_% ymm4) (%_% ymm4) (%_% ymm13) *)
+  0xc3                     (* RET *)
 ];;
 
 (* Define the correctness theorem for the butterfly instance *)
