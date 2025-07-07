@@ -77,7 +77,8 @@ let MLDSA_BUTTERFLY_INSTANCE_CORRECT = prove
                 read YMM8 s = h' /\
                 abs(read YMM4 s) <= &2*q /\
                 abs(read YMM8 s) <= &2*q)
-           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           (MAYCHANGE [RAX; RCX; RDX; RSI; RDI; R8; R9; R10; R11; RFLAGS] ,,
+            MAYCHANGE [YMM0; YMM1; YMM2; YMM3; YMM4; YMM5; YMM6; YMM7; YMM8; YMM9; YMM10; YMM11; YMM15] ,,
             MAYCHANGE [YMM12; YMM13; YMM14])`,
 
   (* Proof steps *)
