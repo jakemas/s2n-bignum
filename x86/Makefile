@@ -249,6 +249,9 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              generic/word_negmodinv.o \
              generic/word_popcount.o \
              generic/word_recip.o \
+             mldsa/avx2_simple6.o \
+             mldsa/avx2_simple7.o \
+             mldsa/mldsa_butterfly.o \
              p256/bignum_add_p256.o \
              p256/bignum_bigendian_4.o \
              p256/bignum_cmul_p256.o \
@@ -388,8 +391,6 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              sm2/bignum_tomont_sm2.o \
              sm2/bignum_triple_sm2.o \
              sm2/bignum_triple_sm2_alt.o \
-             mldsa/avx2_simple6.o \
-             mldsa/avx2_simple7.o
 
 OBJ = $(POINT_OBJ) $(BIGNUM_OBJ)
 
