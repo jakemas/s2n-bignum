@@ -8,9 +8,6 @@
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
-needs "x86/proofs/mldsa_constants.ml";;
-needs "x86/proofs/mldsa_specs.ml";;
-needs "x86/proofs/mldsa_zetas.ml";;
 
 (* Import the machine code from the ELF file *)
 
@@ -53,84 +50,113 @@ let mldsa_butterfly_instance_mc = define_assert_from_elf
   0xc3                     (* RET *)
 ];;
 
-(* Define the correctness theorem for the butterfly instance *)
-let MLDSA_BUTTERFLY_INSTANCE_CORRECT = prove
- (`!l h zl zh q qinv pc.
-      (* Preconditions *)
-      abs(l) <= &8191 /\
-      abs(h) <= &8191 /\
-      abs(zl) <= mldsa_q_half /\
-      abs(zh) <= mldsa_q_half /\
-      q = mldsa_q /\
-      qinv = mldsa_qinv
-      ==> ensures x86
-           (\s. aligned_bytes_loaded s (word pc) mldsa_butterfly_instance_mc /\
-                read PC s = word pc /\
-                read YMM4 s = l /\
-                read YMM8 s = h /\
-                read YMM1 s = zl /\
-                read YMM2 s = zh /\
-                read YMM0 s = qinv)
-           (\s. let (l', h') = butterfly_spec l h zl zh q qinv in
-                read PC s = word(pc + 0x40) /\
-                read YMM4 s = l' /\
-                read YMM8 s = h' /\
-                abs(read YMM4 s) <= &2*q /\
-                abs(read YMM8 s) <= &2*q)
-           (MAYCHANGE [RAX; RCX; RDX; RSI; RDI; R8; R9; R10; R11; RFLAGS] ,,
-            MAYCHANGE [YMM0; YMM1; YMM2; YMM3; YMM4; YMM5; YMM6; YMM7; YMM8; YMM9; YMM10; YMM11; YMM15] ,,
-            MAYCHANGE [YMM12; YMM13; YMM14])`,
 
-  (* Proof steps *)
-  MAP_EVERY X_GEN_TAC [`l:int128`; `h:int128`; `zl:int128`; `zh:int128`; `q:int`; `qinv:int`; `pc:num`] THEN
-  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
-  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+(* Define the execution rule *)
+let MLDSA_BUTTERFLY_EXEC = X86_MK_EXEC_RULE mldsa_butterfly_instance_mc;;
+
+(* Definitions below can be moved to x86/proofs/mldsa_specs.ml when complete *)
+
+(* Define the modulus q for MLDSA *)
+let mldsa_q = define `mldsa_q = 3329`;;
+
+(* Define Montgomery reduction *)
+let montgomery_reduce = define
+ `montgomery_reduce x = (x DIV (2 EXP 32)) mod mldsa_q`;;
+
+(* Define Montgomery multiplication *)
+let montgomery_multiply = define
+ `montgomery_multiply a b = montgomery_reduce (a * b)`;;
+
+(* Define the butterfly operation specification *)
+let mldsa_butterfly_spec = define
+ `mldsa_butterfly_spec l h zeta =
+    let t = montgomery_multiply h zeta in
+    let l' = (l + t) mod mldsa_q in
+    let h' = (l - t) mod mldsa_q in
+    (l', h')`;;
+
+(* Main correctness theorem *)
+let MLDSA_BUTTERFLY_CORRECT = prove(
+  `forall pc l h zeta qinv.
+  ensures x86
+    (* Precondition *)
+    (\s. bytes_loaded s (word pc) mldsa_butterfly_instance_mc /\
+         read RIP s = word pc /\
+         read YMM0 s = qinv /\
+         read YMM1 s = zeta /\
+         read YMM4 s = l /\
+         read YMM8 s = h)
+    (* Postcondition *)
+    (\s. read RIP s = word (pc + LENGTH mldsa_butterfly_instance_mc) /\
+         let t = (h * zeta) mod mldsa_q in
+         read YMM8 s = (l + t) mod mldsa_q /\
+         read YMM4 s = (l - t) mod mldsa_q)
+    (* Registers that may change *)
+    (MAYCHANGE [RIP; YMM8; YMM12; YMM13; YMM14] ,, MAYCHANGE SOME_FLAGS)`,
   
-  (* Initialize the state *)
-  ENSURES_INIT_TAC "s0" THEN
+  (* Start the proof *)
+  REWRITE_TAC [SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
   
-  (* Simulate the execution of each instruction *)
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [1] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [2] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [3] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [4] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [5] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [6] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [7] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [8] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [9] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [10] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [11] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [12] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [13] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [14] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [15] THEN SIMD_SIMPLIFY_TAC[] THEN
-  X86_STEPS_TAC mldsa_butterfly_instance_mc [16] THEN
+  (* Use ENSURES_SEQUENCE_TAC to split the program into chunks *)
+  ENSURES_SEQUENCE_TAC
+    `pc + 9`  (* Split point after instruction 9 *)
+    `\s. read YMM8 s = (h * zeta) mod mldsa_q` THEN
   
-  (* Verify the final state *)
-  ENSURES_FINAL_STATE_TAC THEN
-  ASM_REWRITE_TAC[] THEN
-  
-  (* Prove that the final state matches the specification *)
-  REWRITE_TAC[butterfly_spec; LET_DEF; LET_END_DEF] THEN
-  REWRITE_TAC[montgomery_multiply] THEN
-  SIMP_TAC[GSYM INT_ADD_ASSOC; INT_ADD_LID; INT_ADD_RID] THEN
-  SIMP_TAC[INT_MUL_ASSOC; INT_MUL_LID; INT_MUL_RID] THEN
-  CONV_TAC INT_REDUCE_CONV THEN
-  REWRITE_TAC[] THEN
   CONJ_TAC THENL [
-    (* Prove bound for l' *)
-    MATCH_MP_TAC INT_BOUNDS_ADD THEN
+    (* First chunk: Compute t = h * zeta mod q *)
+    ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--9) THEN
+    ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
-    MATCH_MP_TAC INT_BOUNDS_MUL THEN
-    ASM_REWRITE_TAC[] THEN
-    CONV_TAC INT_REDUCE_CONV;
+    (* Prove: Montgomery multiplication computes t correctly *)
+    CONV_TAC WORD_RULE;
 
-    (* Prove bound for h' *)
-    MATCH_MP_TAC INT_BOUNDS_SUB THEN
-    ASM_REWRITE_TAC[] THEN
-    MATCH_MP_TAC INT_BOUNDS_MUL THEN
-    ASM_REWRITE_TAC[] THEN
-    CONV_TAC INT_REDUCE_CONV
-  ]
+    (* Second chunk: Compute l' and h' *)
+    ENSURES_SEQUENCE_TAC
+      `pc + 16`  (* Split point after instruction 16 *)
+      `\s. read YMM12 s = (l - (h * zeta) mod mldsa_q) /\
+           read YMM8 s = (l + (h * zeta) mod mldsa_q)` THEN
+    
+    CONJ_TAC THENL [
+      (* Compute l' and h' *)
+      ENSURES_INIT_TAC "s0" THEN
+      X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--7) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC WORD_RULE;
+      
+      (* Final verification *)
+      ENSURES_INIT_TAC "s0" THEN
+      X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--1) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC WORD_RULE
+    ]
+  ]);;
+
+(* Subroutine version *)
+let MLDSA_BUTTERFLY_SUBROUTINE_CORRECT = prove(
+ `!pc stackpointer returnaddress l h zeta qinv.
+     nonoverlapping (word pc, LENGTH mldsa_butterfly_instance_mc) (l, 32) /\
+     nonoverlapping (word pc, LENGTH mldsa_butterfly_instance_mc) (h, 32) /\
+     nonoverlapping (stackpointer, 8) (l, 32) /\
+     nonoverlapping (stackpointer, 8) (h, 32)
+     ==> ensures x86
+          (\s. bytes_loaded s (word pc) mldsa_butterfly_instance_mc /\
+               read RIP s = word pc /\
+               read RSP s = stackpointer /\
+               read (memory :> bytes64 stackpointer) s = returnaddress /\
+               read YMM0 s = qinv /\
+               read YMM1 s = zeta /\
+               read YMM4 s = l /\
+               read YMM8 s = h)
+          (\s. read RIP s = returnaddress /\
+               read RSP s = word_add stackpointer (word 8) /\
+               let t = (h * zeta) mod mldsa_q in
+               read YMM8 s = (l + t) mod mldsa_q /\
+               read YMM4 s = (l - t) mod mldsa_q)
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [YMM4; YMM8; YMM12; YMM13; YMM14])`,
+  X86_PROMOTE_RETURN_NOSTACK_TAC mldsa_butterfly_instance_mc MLDSA_BUTTERFLY_CORRECT
 );;

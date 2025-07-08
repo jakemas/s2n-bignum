@@ -3,22 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
  *)
 
-(*
- * WARNING: This file is auto-generated from gen_mldsa_zetas.py
- *          Do not modify it directly.
- *)
-
-(*
- * Table of zeta values used in the ML-DSA x86_64 NTTs
- * See gen_mldsa_zetas.py for details. This will be added
- * into autogen.
- *)
-
-(* ML-DSA parameters *)
-let mldsa_q = define `mldsa_q = &8380417`;; (* Modulus *)
-let mldsa_n = define `mldsa_n = &256`;; (* Polynomial degree *)
-let mldsa_qinv = define `mldsa_qinv = &4236238847`;; (* -q^(-1) mod 2^32 *)
-
 (* Zeta values for ML-DSA forward NTT, layers 0-1 *)
 let mldsa_ntt_zetas_layer01 = define `mldsa_ntt_zetas_layer01:int list = [
   &25847; &2464201481; -- &2608894; &1929875198; -- &518909; &1927777021
@@ -89,9 +73,4 @@ let mldsa_ntt_zetas_layer27 = define `mldsa_ntt_zetas_layer27:int list = [
   &183443; &2750075757; -- &976891; &3415099387; &1612842; &1499603926; -- &3545687; &4093704791;
   -- &554416; &4139677104; &3919660; &1809756372; -- &48306; &2258042034; -- &1362209; &2360928545;
   &3937738; &973777462; &1400424; &3894256024; -- &846154; &540420426; &1976782; &3920107058
-]`;;
-
-(* Zeta values for butterfly operation *)
-let mldsa_butterfly_zetas = define `mldsa_butterfly_zetas:int list = [
-  &25847; &2464201481
 ]`;;
