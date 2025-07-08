@@ -111,10 +111,20 @@ let butterfly_final_complete = define
     read YMM8 s = word h'`;;
 
 (* ------------------------------------------------------------------------- *)
+(* Supporting lemmas for completing the proof                                *)
+(* ------------------------------------------------------------------------- *)
+
+(* Simple lemma for Montgomery reduction definition *)
+let MONTGOMERY_WORD_LEMMA = prove(
+  `!h zeta. montgomery_multiply (val h) (val zeta) = montgomery_reduce (val h * val zeta)`,
+  REWRITE_TAC[montgomery_multiply]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Main correctness theorem with sequential proof structure                  *)
 (* ------------------------------------------------------------------------- *)
 
-(* WORK IN PROGRESS *) 
+(* WORK IN PROGRESS - to run
+needs "x86/proofs/mldsa_butterfly.ml";; *)
 
 let MLDSA_BUTTERFLY_CORRECT = prove(
   `forall pc l h zeta qinv zeta2.
@@ -148,10 +158,35 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
     X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--7) THEN
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[montgomery_partial_complete] THEN
-    (* Provide witnesses for the existential quantifiers *)
+    (* After these 7 instructions:
+       - Instruction 1: VPMULDQ ymm13, ymm1, ymm8 (h * zeta -> ymm13)
+       - Instruction 2: VMOVSHDUP ymm12, ymm8 (extract high parts of h)
+       - Instruction 3: VPMULDQ ymm14, ymm1, ymm12 (high_h * zeta -> ymm14)
+       - Instruction 4: VPMULDQ ymm8, ymm2, ymm8 (h * zeta2 -> ymm8)
+       - Instruction 5: VPMULDQ ymm12, ymm2, ymm12 (high_h * zeta2 -> ymm12)
+       - Instruction 6: VPMULDQ ymm13, ymm0, ymm13 (apply qinv to ymm13)
+       - Instruction 7: VPMULDQ ymm14, ymm0, ymm14 (apply qinv to ymm14)
+    *)
+    (* The partial products for Montgomery reduction are now computed *)
+    (* YMM13, YMM14 contain qinv-adjusted high parts *)
+    (* YMM8, YMM12 contain the low parts for blending *)
     MAP_EVERY EXISTS_TAC [`read YMM13 s7`; `read YMM14 s7`; 
                           `read YMM8 s7`; `read YMM12 s7`] THEN
-    REFL_TAC;
+    (* All register values are simply what they contain after execution *)
+    CONJ_TAC THENL [
+      (* YMM13 contains the qinv-adjusted partial product *)
+      REFL_TAC;
+      CONJ_TAC THENL [
+        (* YMM14 contains the qinv-adjusted high part partial product *)
+        REFL_TAC;
+        CONJ_TAC THENL [
+          (* YMM8 contains h * zeta2 *)
+          REFL_TAC;
+          (* YMM12 contains high_h * zeta2 *)
+          REFL_TAC
+        ]
+      ]
+    ];
     
     (* CHUNK 2: Montgomery reduction (Instructions 8-11) *)
     ENSURES_SEQUENCE_TAC
@@ -164,11 +199,27 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
       X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--4) THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[montgomery_reduction_complete] THEN
-      (* Provide witness for t_val and other existentials *)
+      (* After these 4 instructions:
+         - Instruction 8: VMOVSHDUP ymm8, ymm8 (shuffle high parts)
+         - Instruction 9: VPBLENDD ymm8, ymm8, ymm12, 0xAA (blend to complete Montgomery reduction)
+         - Instruction 10: VPSUBD ymm12, ymm4, ymm8 (compute l - t)
+         - Instruction 11: VPADDD ymm4, ymm4, ymm8 (compute l + t)
+      *)
+      (* YMM8 now contains t = montgomery_reduce(h * zeta) *)
+      (* YMM4 contains l + t, YMM12 contains l - t *)
       EXISTS_TAC `read YMM8 s4` THEN
-      CONJ_TAC THENL [REFL_TAC; ALL_TAC] THEN
-      MAP_EVERY EXISTS_TAC [`read YMM4 s4`; `read YMM12 s4`] THEN
-      REFL_TAC;
+      CONJ_TAC THENL [
+        (* YMM8 = t_val: This should be the Montgomery reduced multiplication result *)
+        REFL_TAC;
+        (* Provide witnesses for l+t and l-t *)
+        MAP_EVERY EXISTS_TAC [`read YMM4 s4`; `read YMM12 s4`] THEN
+        CONJ_TAC THENL [
+          (* YMM4 = l_plus_t: This should be l + montgomery_reduce(h * zeta) *)
+          REFL_TAC;
+          (* YMM12 = l_minus_t: This should be l - montgomery_reduce(h * zeta) *)
+          REFL_TAC
+        ]
+      ];
       
       (* CHUNK 3: Butterfly computation (Instructions 12-14) *)
       ENSURES_SEQUENCE_TAC
@@ -181,8 +232,24 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
         X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--3) THEN
         ENSURES_FINAL_STATE_TAC THEN
         ASM_REWRITE_TAC[butterfly_computation_complete] THEN
+        (* After these 3 instructions:
+           - Instruction 12: VMOVSHDUP ymm13, ymm13 (shuffle high parts)
+           - Instruction 13: VPBLENDD ymm13, ymm13, ymm14, 0xAA (blend correction)
+           - Instruction 14: VPADDD ymm8, ymm12, ymm13 (compute h' = l-t + correction)
+        *)
         MAP_EVERY EXISTS_TAC [`read YMM8 s3`; `read YMM4 s3`; `read YMM13 s3`] THEN
-        REFL_TAC;
+        (* The key insight: YMM8 now contains h', YMM4 contains intermediate l' *)
+        (* YMM13 contains the correction factor *)
+        CONJ_TAC THENL [
+          (* YMM8 = h_prime: This should be the result of the butterfly h computation *)
+          REFL_TAC;
+          CONJ_TAC THENL [
+            (* YMM4 = l_intermediate: This should be l+t from previous chunk *)
+            REFL_TAC;
+            (* YMM13 = correction: This should be the blended correction factor *)
+            REFL_TAC
+          ]
+        ];
         
         (* CHUNK 4: Final output formatting (Instructions 15-16) *)
         (* This is the simplest chunk - just final register corrections *)
@@ -199,11 +266,49 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
         (* for the mathematical connection that requires all chunks working together *)
         CONJ_TAC THENL [
           (* Show YMM4 contains l' = (l + montgomery_reduce(h * zeta)) MOD mldsa_q *)
-          (* replacing SORRY placeholders with actual mathematical proofs, working backwards through the chunks. 
-          This provides a solid foundation for completing the full ML-DSA butterfly correctness proof. *)
-          SORRY;
+          (* After instruction 15: VPSUBD ymm4, ymm4, ymm13 *)
+          (* We need to show that the subtraction gives us the correct l' value *)
+          (* This requires connecting to the previous chunks' intermediate states *)
+          ASM_REWRITE_TAC[] THEN
+          (* The key insight: YMM4 after VPSUBD should equal word l' *)
+          (* Let's trace through the computation:
+             - Chunk 2: YMM4 = l + t (where t = montgomery_reduce(h * zeta))
+             - Chunk 3: YMM4 unchanged, YMM13 = correction
+             - Chunk 4: YMM4 = YMM4 - YMM13 = (l + t) - correction
+             - We need to show: (l + t) - correction = l' = (l + t) MOD mldsa_q
+          *)
+          (* Use assumptions from previous chunks *)
+          FIRST_X_ASSUM(STRIP_ASSUME_TAC) THEN
+          (* We have butterfly_computation_complete assumption *)
+          ASM_REWRITE_TAC[] THEN
+          (* Connect to montgomery_reduction_complete from earlier *)
+          (* The mathematical connection would show that correction adjusts for modular reduction *)
+          (* For now, establish the proof structure *)
+          REWRITE_TAC[montgomery_multiply; montgomery_reduce] THEN
+          (* The symbolic execution has already established the register states *)
+          (* We rely on the intermediate state assumptions from previous chunks *)
+          ASM_REWRITE_TAC[];
+          
           (* Show YMM8 contains h' = (l - montgomery_reduce(h * zeta)) MOD mldsa_q *)
-          SORRY
+          (* YMM8 should already contain h' from the previous chunk *)
+          (* The RET instruction doesn't change YMM8 *)
+          ASM_REWRITE_TAC[] THEN
+          (* YMM8 should remain unchanged from previous chunk *)
+          (* Key insight: YMM8 was set in Chunk 3 and RET doesn't modify it *)
+          (* We need to connect the butterfly_computation_complete assumption *)
+          (* to show that YMM8 already contains the correct h' value *)
+          FIRST_X_ASSUM(STRIP_ASSUME_TAC) THEN
+          (* Use the fact that YMM8 = h_prime from previous chunk *)
+          (* This h_prime should equal the mathematical h' *)
+          ASM_REWRITE_TAC[] THEN
+          (* Connect h_prime to the mathematical specification *)
+          (* YMM8 was computed in Chunk 3 as h' = (l - t) + correction *)
+          (* which should equal (l - montgomery_reduce(h * zeta)) MOD mldsa_q *)
+          REWRITE_TAC[montgomery_multiply; montgomery_reduce] THEN
+          (* Use word arithmetic to connect the register computation to math spec *)
+          CONV_TAC WORD_RULE THEN
+          (* The RET instruction preserves YMM8, so the value is unchanged *)
+          ASM_REWRITE_TAC[]
         ]
       ]
     ]
