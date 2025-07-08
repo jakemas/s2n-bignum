@@ -56,7 +56,7 @@ let MLDSA_BUTTERFLY_EXEC = X86_MK_EXEC_RULE mldsa_butterfly_instance_mc;;
 (* Definitions below can be moved to x86/proofs/mldsa_specs.ml when complete *)
 
 (* Define the modulus q for MLDSA *)
-let mldsa_q = define `mldsa_q = 3329`;;
+let mldsa_q = define `mldsa_q = 8380417`;;
 
 (* Define Montgomery reduction *)
 let montgomery_reduce = define
@@ -79,21 +79,32 @@ let mldsa_butterfly_spec = define
 (* ------------------------------------------------------------------------- *)
 
 (* State after Montgomery multiplication setup (Chunk 1: Instructions 1-7) *)
+(* Partial products for Montgomery reduction have been computed *)
+(* YMM13, YMM14 contain qinv-adjusted high parts *)
+(* YMM8, YMM12 contain the low parts for blending *)
 let montgomery_partial_complete = define
  `montgomery_partial_complete s h zeta <=>
-    ?ymm13_val ymm14_val ymm8_val ymm12_val.
-      read YMM13 s = ymm13_val /\
-      read YMM14 s = ymm14_val /\
-      read YMM8 s = ymm8_val /\
-      read YMM12 s = ymm12_val`;;
+    (ival(read YMM13 s) == ival h * ival zeta * &58728449) (mod &8380417) /\
+    abs(ival(read YMM13 s)) <= &2147483647 /\
+    (ival(read YMM14 s) == ival h * ival zeta * &58728449) (mod &8380417) /\
+    abs(ival(read YMM14 s)) <= &2147483647 /\
+    (ival(read YMM8 s) == ival h * ival zeta) (mod &8380417) /\
+    abs(ival(read YMM8 s)) <= &2147483647 /\
+    (ival(read YMM12 s) == ival h * ival zeta) (mod &8380417) /\
+    abs(ival(read YMM12 s)) <= &2147483647`;;
 
 (* State after Montgomery reduction complete (Chunk 2: Instructions 8-11) *)
+(* Montgomery reduction is complete, t = montgomery_reduce(h * zeta) *)
+(* YMM8 contains the reduced multiplication result *)
+(* YMM4 and YMM12 contain l+t and l-t respectively *)
 let montgomery_reduction_complete = define
  `montgomery_reduction_complete s l h zeta t_val <=>
-    read YMM8 s = t_val /\
-    ?l_plus_t l_minus_t.
-      read YMM4 s = l_plus_t /\
-      read YMM12 s = l_minus_t`;;
+    (ival(read YMM8 s) == montgomery_reduce(ival h * ival zeta)) (mod &8380417) /\
+    abs(ival(read YMM8 s)) <= &8380416 /\
+    (ival(read YMM4 s) == ival l + montgomery_reduce(ival h * ival zeta)) (mod &8380417) /\
+    abs(ival(read YMM4 s)) <= &16760833 /\
+    (ival(read YMM12 s) == ival l - montgomery_reduce(ival h * ival zeta)) (mod &8380417) /\
+    abs(ival(read YMM12 s)) <= &16760833`;;
 
 (* State after butterfly computation (Chunk 3: Instructions 12-14) *)
 let butterfly_computation_complete = define
@@ -196,7 +207,7 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
     CONJ_TAC THENL [
       (* Prove Chunk 2: Montgomery reduction *)
       ENSURES_INIT_TAC "s0" THEN
-      X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--4) THEN
+      X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (8--11) THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[montgomery_reduction_complete] THEN
       (* After these 4 instructions:
@@ -229,7 +240,7 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
       CONJ_TAC THENL [
         (* Prove Chunk 3: Butterfly computation *)
         ENSURES_INIT_TAC "s0" THEN
-        X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--3) THEN
+        X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (12--14) THEN
         ENSURES_FINAL_STATE_TAC THEN
         ASM_REWRITE_TAC[butterfly_computation_complete] THEN
         (* After these 3 instructions:
@@ -254,7 +265,7 @@ let MLDSA_BUTTERFLY_CORRECT = prove(
         (* CHUNK 4: Final output formatting (Instructions 15-16) *)
         (* This is the simplest chunk - just final register corrections *)
         ENSURES_INIT_TAC "s0" THEN
-        X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (1--2) THEN
+        X86_STEPS_TAC MLDSA_BUTTERFLY_EXEC (15--16) THEN
         ENSURES_FINAL_STATE_TAC THEN
         ASM_REWRITE_TAC[butterfly_final_complete; mldsa_butterfly_spec] THEN
         (* Expand the let expressions *)
