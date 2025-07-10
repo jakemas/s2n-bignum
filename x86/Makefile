@@ -250,7 +250,6 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              generic/word_popcount.o \
              generic/word_recip.o \
              mldsa/avx2_simple6.o \
-             mldsa/avx2_simple7.o \
              mldsa/mldsa_butterfly.o \
              p256/bignum_add_p256.o \
              p256/bignum_bigendian_4.o \

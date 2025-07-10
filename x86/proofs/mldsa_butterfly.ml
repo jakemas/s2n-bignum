@@ -15,7 +15,7 @@ needs "x86/proofs/base.ml";;
  ****)
 
 let mldsa_butterfly_instance_mc = define_assert_from_elf
- "mldsa_butterfly_instance_mc" "s2n-bignum/x86/mldsa/mldsa_butterfly.o"
+ "mldsa_butterfly_instance_mc" "x86/mldsa/mldsa_butterfly.o"
 [
   0xc4; 0x42; 0x75; 0x28; 0xe8;
                            (* VPMULDQ (%_% ymm13) (%_% ymm1) (%_% ymm8) *)
