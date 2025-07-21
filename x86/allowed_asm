@@ -118,10 +118,13 @@
 : subq$
 : test$
 : testq$
+: vmovshdup$
 : vpxor$
 : vpaddw$
 : vpaddd$
 : vpand$
+: vpblendd$
+: vpmuldq$
 : vpmulhw$
 : vpmullw$
 : vpsrad$
