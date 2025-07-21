@@ -1,18 +1,16 @@
 .intel_syntax noprefix
 .text
 
-/* Montgomery multiplication sequence */
+/* ML-DSA Montgomery multiplication part only */
 vpmuldq ymm13, ymm1, ymm8
-
 vmovshdup ymm12, ymm8
-        
-vpmuldq ymm14, ymm1, ymm12     
-vpmuldq ymm8, ymm2, ymm8       
-vpmuldq ymm12, ymm2, ymm12     
-vpmuldq ymm13, ymm0, ymm13     
-vpmuldq ymm14, ymm0, ymm14     
-vmovshdup ymm8, ymm8       
-     
-vpblendd ymm8, ymm8, ymm12, 0xAA
+vpmuldq ymm14, ymm1, ymm12
 
-ret
+vpmuldq ymm8, ymm2, ymm8
+vpmuldq ymm12, ymm2, ymm12
+
+vpmuldq ymm13, ymm0, ymm13
+vpmuldq ymm14, ymm0, ymm14
+
+vmovshdup ymm8, ymm8
+vpblendd ymm8, ymm8, ymm12, 0xAA
