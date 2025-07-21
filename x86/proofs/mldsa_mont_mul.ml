@@ -144,3 +144,22 @@ val EXEC : thm * thm option array =
              bytes_loaded s (word pc) mldsa_mont_mul
              ==> x86_decode s (word (pc + 46)) (1,RET)|])
 *)
+
+let MLDSA_MONT_MUL_SPEC = prove(
+  `forall pc h zeta qinv zeta_high.
+  ensures x86
+    (\s. bytes_loaded s (word pc) mldsa_mont_mul /\
+         read RIP s = word pc /\
+         read YMM0 s = qinv /\
+         read YMM1 s = zeta /\
+         read YMM2 s = zeta_high /\
+         read YMM8 s = h)
+    (\s. read RIP s = word (pc + 47) /\ T)
+    (MAYCHANGE [RIP] ,, MAYCHANGE [YMM8; YMM12; YMM13; YMM14] ,, MAYCHANGE SOME_FLAGS)`,
+
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC [SOME_FLAGS; fst EXEC] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC EXEC (1--10) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
