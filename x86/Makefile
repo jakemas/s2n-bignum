@@ -253,6 +253,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              mldsa/simple_avx2_add.o \
              mldsa/simple_avx2_mul.o \
              mldsa/simple_avx2_movshdup.o \
+             mldsa/simple_avx2_sub.o \
              mldsa/simple_avx2_vpblendd.o \
              mldsa/mldsa_mont_1.o \
              mldsa/mldsa_mont_2.o \
