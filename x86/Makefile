@@ -268,6 +268,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              mldsa/mldsa_mont_11.o \
              mldsa/mldsa_mont_12.o \
              mldsa/mldsa_mont_13.o \
+             mldsa/mldsa_mont_14.o \
              p256/bignum_add_p256.o \
              p256/bignum_bigendian_4.o \
              p256/bignum_cmul_p256.o \
