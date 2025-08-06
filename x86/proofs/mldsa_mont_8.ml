@@ -3,6 +3,7 @@
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
+needs "x86/proofs/utils/mldsa.ml";;
 
 (**** print_literal_from_elf "x86/mldsa/mldsa_mont_8.o";;
  ****)
@@ -30,6 +31,41 @@ let mldsa_mont_9instr_mc = define_assert_from_elf "mldsa_mont_9instr_mc" "x86/ml
 ];;
 
 let MLDSA_MONT_9INSTR_EXEC = X86_MK_EXEC_RULE mldsa_mont_9instr_mc;;
+
+(* ------------------------------------------------------------------------- *)
+(* Clean proof using congbound mechanism                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let MLDSA_MONT_BUTTERFLY_CORRECT = prove
+ (`forall pc a b c d.
+        ensures x86
+             (\s. bytes_loaded s (word pc) mldsa_mont_mc /\
+                  read RIP s = word pc /\
+                  read YMM0 s = d /\
+                  read YMM1 s = a /\
+                  read YMM2 s = b /\
+                  read YMM8 s = c)
+             (\s. read RIP s = word (pc + LENGTH mldsa_mont_mc) /\
+                  read YMM13 s = vpmuldq_ymm d (vpmuldq_ymm a c) /\
+                  read YMM14 s = vpmuldq_ymm d (vpmuldq_ymm a (vmovshdup_ymm c)) /\
+                  read YMM8 s = vpblendd_ymm (word 170) 
+                                             (vmovshdup_ymm (vpmuldq_ymm b c))
+                                             (vpmuldq_ymm b (vmovshdup_ymm c)) /\
+                  read YMM12 s = vpmuldq_ymm b (vmovshdup_ymm c))
+             (MAYCHANGE [RIP] ,, MAYCHANGE [ZMM13; ZMM12; ZMM14; ZMM8] ,, MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC [SOME_FLAGS; fst MLDSA_MONT_EXEC] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  
+  MAP_EVERY (fun n -> X86_STEPS_TAC MLDSA_MONT_EXEC [n] THEN
+                      X86_SIMD_SIMPLIFY_TAC [vpmuldq_ymm; vmovshdup_ymm; vpblendd_ymm])
+            (1--9) THEN
+            
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[MAYCHANGE] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[GSYM vpmuldq_ymm; GSYM vmovshdup_ymm; GSYM vpblendd_ymm] THEN
+  REPEAT CONJ_TAC THEN TRY REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
 (* Functional correctness proof with explicit type annotations               *)
