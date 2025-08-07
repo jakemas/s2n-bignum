@@ -1,16 +1,11 @@
-(*
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
- *)
-
 (* ========================================================================= *)
-(* Minimal ML-DSA utilities for x86 congbound mechanism                     *)
+(* ML-DSA utilities                                                          *)
 (* ========================================================================= *)
 
 needs "Library/words.ml";;
 
 (* ------------------------------------------------------------------------- *)
-(* AVX2 SIMD operation definitions for your 9-instruction butterfly         *)
+(* AVX2 SIMD operation definitions                                           *)
 (* ------------------------------------------------------------------------- *)
 
 let vpmuldq = define
@@ -83,7 +78,7 @@ let vpsubd = define
       (word_sub (word_subword a (0,32):(32)word) (word_subword b (0,32):(32)word))))`;;
 
 (* ------------------------------------------------------------------------- *)
-(* x86 SIMD simplification (the key part you need)                           *)
+(* x86 SIMD simplification                                                   *)
 (* ------------------------------------------------------------------------- *)
 
 let X86_SIMD_SIMPLIFY_CONV unfold_defs =
