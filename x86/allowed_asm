@@ -54,6 +54,7 @@
 : leaq$
 : mov$
 : movl$
+: movd$
 : movq$
 : movw$
 : movabs$
