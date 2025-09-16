@@ -4483,9 +4483,9 @@ let pure_forward_ntt_mldsa = define
                        &1753 pow ((2 * k DIV 2 + 1) * j))
     rem &8380417`;;
 
-let pure_inverse_ntt_mldsa1 = define
- `pure_inverse_ntt_mldsa1 f k =
-    (&4193792 * isum (0..127) (\j. f(2 * j + k MOD 2) *
+let pure_inverse_ntt_mldsa = define
+ `pure_inverse_ntt_mldsa f k =
+    (&7838417 * isum (0..127) (\j. f(2 * j + k MOD 2) *
                                 &731434 pow ((2 * j + 1) * k DIV 2)))
     rem &8380417`;;
 
@@ -4515,7 +4515,7 @@ let tomont_8380417 = define
 
 let mldsa_inverse_ntt = define
  `mldsa_inverse_ntt f k =
-    (&4193792 * isum (0..127)
+    (&1999744 * isum (0..127)
                  (\j. f(2 * bitreverse8 j + k MOD 2) *
                        &731434 pow ((2 * j + 1) * k DIV 2)))
     rem &8380417`;;
@@ -4537,7 +4537,6 @@ let MLDSA_FORWARD_NTT = prove
   REWRITE_TAC[ARITH_RULE `(2 * x + i MOD 2) DIV 2 = x`] THEN
   REWRITE_TAC[MOD_MULT_ADD; MOD_MOD_REFL]);;
 
-(* got here, proof failing *)
 let MLDSA_INVERSE_NTT = prove
  (`mldsa_inverse_ntt = tomont_8380417 o pure_inverse_ntt_mldsa o mldsa_reorder mldsa_bitreverse_pairs`,
   REWRITE_TAC[FUN_EQ_THM; o_DEF; mldsa_bitreverse_pairs; mldsa_reorder] THEN
@@ -4547,7 +4546,6 @@ let MLDSA_INVERSE_NTT = prove
   MAP_EVERY X_GEN_TAC [`a:num->int`; `i:num`] THEN
   CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[INT_MUL_ASSOC] THEN
   ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN CONV_TAC INT_REDUCE_CONV);;
-
 
 (* ------------------------------------------------------------------------- *)
 (* Correctness proof.                                                        *)
