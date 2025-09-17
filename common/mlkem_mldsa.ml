@@ -609,6 +609,30 @@ let MONTRED_LEMMA = prove
    `(a * b + 1 == 0) (mod d) ==> d divides ((x * a) * b + x)`) THEN
   REWRITE_TAC[CONG] THEN ARITH_TAC);;
 
+let MONTRED_MLDSA_LEMMA = prove
+ (`!x. &2 pow 32 * ival(mldsa_montred x) =
+       ival(word_add
+         (word_mul (word_sx(iword(ival x * &4236238847):int32)) (word 8380417)) x)`,
+  GEN_TAC THEN REWRITE_TAC[mldsa_montred] THEN REWRITE_TAC[WORD_BLAST
+   `word_subword (x:int64) (0,32):int32 = word_sx x`] THEN
+  REWRITE_TAC[IWORD_INT_MUL; GSYM word_sx; GSYM WORD_IWORD] THEN
+  REWRITE_TAC[WORD_BLAST `(word_sx:int64->int32) x = word_zx x`] THEN
+  CONV_TAC INT_REDUCE_CONV THEN MATCH_MP_TAC(BITBLAST_RULE
+   `word_and x (word 4294967295):int64 = word 0
+    ==> &4294967296 * ival(word_subword x (32,32):int32) = ival x`) THEN
+  REWRITE_TAC[BITBLAST_RULE
+   `word_and x (word 4294967295):int64 = word 0 <=> word_zx x:int32 = word 0`] THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) WORD_ZX_ADD o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_32; DIMINDEX_64; ARITH] THEN DISCH_THEN SUBST1_TAC THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) WORD_ZX_MUL o lhand o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_32; DIMINDEX_64; ARITH] THEN DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[WORD_BLAST `word_zx(word_sx (x:int32):int64) = x`] THEN
+  REWRITE_TAC[GSYM VAL_EQ_0; VAL_WORD_ADD; VAL_WORD_MUL; VAL_WORD] THEN
+  CONV_TAC MOD_DOWN_CONV THEN REWRITE_TAC[GSYM DIVIDES_MOD; DIMINDEX_32] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN MATCH_MP_TAC(NUMBER_RULE
+   `(a * b + 1 == 0) (mod d) ==> d divides ((x * a) * b + x)`) THEN
+  REWRITE_TAC[CONG] THEN ARITH_TAC);;
+
 let CONGBOUND_MONTRED = prove
  (`!a a' l u.
       (ival a == a') (mod &3329) /\ l <= ival a /\ ival a <= u
@@ -636,70 +660,6 @@ let CONGBOUND_MONTRED = prove
   W(MP_TAC o C ISPEC IVAL_BOUND o
     rand o funpow 3 lhand o rand o lhand o lhand o snd) THEN
   REWRITE_TAC[DIMINDEX_16; ARITH] THEN STRIP_TAC THEN
-  ANTS_TAC THENL [ASM_INT_ARITH_TAC; DISCH_THEN SUBST1_TAC] THEN
-  ASM_REWRITE_TAC[INTEGER_RULE
-   `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
-  ASM_INT_ARITH_TAC);;
-
-let MLDSA_MONTRED_LEMMA = prove
- (`!x. &2 pow 32 * ival(mldsa_montred x) =
-       ival(word_add
-         (word_mul (word_sx(iword(ival x * &4236238847):int32)) (word 8380417)) x)`,
-  GEN_TAC THEN REWRITE_TAC[mldsa_montred] THEN
-  REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,32):int32 = word_sx x`] THEN
-  REWRITE_TAC[IWORD_INT_MUL; GSYM word_sx; GSYM WORD_IWORD] THEN
-  REWRITE_TAC[WORD_BLAST `(word_sx:int64->int32) x = word_zx x`] THEN
-  CONV_TAC INT_REDUCE_CONV THEN
-  SUBGOAL_THEN
-    `&2 pow 32 * ival(word_subword
-      (word_add (word_mul (word_sx (word_mul (word_zx x) (word 4236238847))) (word 8380417)) x)
-      (32,32):int32) =
-     ival(word_add (word_mul (word_sx (word_mul (word_zx x) (word 4236238847))) (word 8380417)) x)`
-    ASSUME_TAC THENL
-  [MATCH_MP_TAC(WORD_RULE
-    `!x:int64. word_and x (word 4294967295) = word 0
-     ==> &2 pow 32 * ival(word_subword x (32,32):int32) = ival x`) THEN
-   REWRITE_TAC[WORD_AND_MASK; DIMINDEX_64] THEN
-   CONV_TAC WORD_REDUCE_CONV THEN
-   REWRITE_TAC[WORD_RULE `word_zx (x:int64):int32 = word 0 <=>
-                          (val x) MOD (2 EXP 32) = 0`] THEN
-   REWRITE_TAC[VAL_WORD_ADD; VAL_WORD_MUL; VAL_WORD; VAL_WORD_SX; VAL_WORD_ZX] THEN
-   REWRITE_TAC[DIMINDEX_32; DIMINDEX_64] THEN
-   CONV_TAC MOD_DOWN_CONV THEN
-   MATCH_MP_TAC DIVIDES_MOD_0 THEN
-   REWRITE_TAC[GSYM num_divides] THEN
-   MATCH_MP_TAC(NUMBER_RULE
-     `(a * b + 1 == 0) (mod d) ==> d divides ((x * a) * b + x)`) THEN
-   REWRITE_TAC[CONG] THEN ARITH_TAC;
-   ASM_REWRITE_TAC[]]);;
-
-let CONGBOUND_MLDSA_MONTRED = prove
- (`!a a' l u.
-      (ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u
-      ==> --(&8796093022208) <= l /\ u <= &8796093022208
-          ==> (ival(mldsa_montred a) == &8265825 * a') (mod &8380417) /\
-              (l - &35993581568) div &2 pow 32 <= ival(mldsa_montred a) /\
-              ival(mldsa_montred a) <= &1 + (u + &35993581568) div &2 pow 32`,
-  REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
-  CONV_TAC NUM_REDUCE_CONV THEN
-  MP_TAC(SPECL [`&8265825:int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
- `!d e n:int. (e * d == &1) (mod n)
-              ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)) THEN
-  ANTS_TAC THENL
-   [REWRITE_TAC[GSYM INT_REM_EQ] THEN INT_ARITH_TAC;
-    DISCH_THEN(fun th -> REWRITE_TAC[th])] THEN
-  ONCE_REWRITE_TAC[INT_ARITH
-   `l:int <= x <=> &2 pow 32 * l <= &2 pow 32 * x`] THEN
-  REWRITE_TAC[MLDSA_MONTRED_LEMMA] THEN
-  REWRITE_TAC[WORD_RULE
-   `word_add (word_mul a b) c = iword(ival a * ival b + ival c)`] THEN
-  ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH] THEN
-  W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
-   lhand o rator o lhand o snd) THEN
-  REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
-  W(MP_TAC o C ISPEC IVAL_BOUND o
-    rand o funpow 3 lhand o rand o lhand o lhand o snd) THEN
-  REWRITE_TAC[DIMINDEX_32; ARITH] THEN STRIP_TAC THEN
   ANTS_TAC THENL [ASM_INT_ARITH_TAC; DISCH_THEN SUBST1_TAC] THEN
   ASM_REWRITE_TAC[INTEGER_RULE
    `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
