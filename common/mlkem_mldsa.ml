@@ -26,6 +26,18 @@ let pure_inverse_ntt = define
                                 &1175 pow ((2 * j + 1) * k DIV 2)))
     rem &3329`;;
 
+let pure_forward_ntt_mldsa = define
+ `pure_forward_ntt_mldsa f k =
+    isum (0..127) (\j. f(2 * j + k MOD 2) *
+                       &1753 pow ((2 * k DIV 2 + 1) * j))
+    rem &8380417`;;
+
+let pure_inverse_ntt_mldsa = define
+ `pure_inverse_ntt_mldsa f k =
+    (&7838417 * isum (0..127) (\j. f(2 * j + k MOD 2) *
+                                &731434 pow ((2 * j + 1) * k DIV 2)))
+    rem &8380417`;;
+
 (* ------------------------------------------------------------------------- *)
 (* Bit-reversing order as used in the standard/default order.                *)
 (* ------------------------------------------------------------------------- *)
@@ -36,6 +48,12 @@ let bitreverse7 = define
 let bitreverse_pairs = define
  `bitreverse_pairs i = 2 * bitreverse7 (i DIV 2) + i MOD 2`;;
 
+let bitreverse8 = define
+ `bitreverse8(n) = val(word_reversefields 1 (word n:8 word))`;;
+
+let mldsa_bitreverse_pairs = define
+ `mldsa_bitreverse_pairs i = 2 * bitreverse8 (i DIV 2) + i MOD 2`;;
+
 let reorder = define
  `reorder p (a:num->int) = \i. a(p i)`;;
 
@@ -45,6 +63,9 @@ let reorder = define
 
 let tomont_3329 = define
  `tomont_3329 (a:num->int) = \i. (&2 pow 16 * a i) rem &3329`;;
+
+let tomont_8380417 = define
+ `tomont_8380417 (a:num->int) = \i. (&2 pow 32 * a i) rem &8380417`;;
 
 (* ------------------------------------------------------------------------- *)
 (* The multiplication cache for fast base multiplication                     *)
@@ -71,6 +92,19 @@ let forward_ntt = define
                        &17 pow ((2 * bitreverse7 (k DIV 2) + 1) * j))
     rem &3329`;;
 
+let mldsa_inverse_ntt = define
+ `mldsa_inverse_ntt f k =
+    (&1999744 * isum (0..127)
+                 (\j. f(2 * bitreverse8 j + k MOD 2) *
+                       &731434 pow ((2 * j + 1) * k DIV 2)))
+    rem &8380417`;;
+
+let mldsa_forward_ntt = define
+ `mldsa_forward_ntt f k =
+    isum (0..127) (\j. f(2 * j + k MOD 2) *
+                       &1753 pow ((2 * bitreverse8 (k DIV 2) + 1) * j))
+    rem &8380417`;;
+
 (* ------------------------------------------------------------------------- *)
 (* Show how these relate to the "pure" ones.                                 *)
 (* ------------------------------------------------------------------------- *)
@@ -86,6 +120,23 @@ let INVERSE_NTT = prove
  (`inverse_ntt = tomont_3329 o pure_inverse_ntt o reorder bitreverse_pairs`,
   REWRITE_TAC[FUN_EQ_THM; o_DEF; bitreverse_pairs; reorder] THEN
   REWRITE_TAC[inverse_ntt; pure_inverse_ntt; tomont_3329] THEN
+  REWRITE_TAC[ARITH_RULE `(2 * x + i MOD 2) DIV 2 = x`] THEN
+  REWRITE_TAC[MOD_MULT_ADD; MOD_MOD_REFL] THEN
+  MAP_EVERY X_GEN_TAC [`a:num->int`; `i:num`] THEN
+  CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[INT_MUL_ASSOC] THEN
+  ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN CONV_TAC INT_REDUCE_CONV);;
+
+let MLDSA_FORWARD_NTT = prove
+ (`mldsa_forward_ntt = reorder mldsa_bitreverse_pairs o pure_forward_ntt_mldsa`,
+  REWRITE_TAC[FUN_EQ_THM; o_DEF; mldsa_bitreverse_pairs; reorder] THEN
+  REWRITE_TAC[mldsa_forward_ntt; pure_forward_ntt_mldsa] THEN
+  REWRITE_TAC[ARITH_RULE `(2 * x + i MOD 2) DIV 2 = x`] THEN
+  REWRITE_TAC[MOD_MULT_ADD; MOD_MOD_REFL]);;
+
+let MLDSA_INVERSE_NTT = prove
+ (`mldsa_inverse_ntt = tomont_8380417 o pure_inverse_ntt_mldsa o reorder mldsa_bitreverse_pairs`,
+  REWRITE_TAC[FUN_EQ_THM; o_DEF; mldsa_bitreverse_pairs; reorder] THEN
+  REWRITE_TAC[mldsa_inverse_ntt; pure_inverse_ntt_mldsa; tomont_8380417] THEN
   REWRITE_TAC[ARITH_RULE `(2 * x + i MOD 2) DIV 2 = x`] THEN
   REWRITE_TAC[MOD_MULT_ADD; MOD_MOD_REFL] THEN
   MAP_EVERY X_GEN_TAC [`a:num->int`; `i:num`] THEN
@@ -152,6 +203,65 @@ let INVERSE_NTT_CONV =
   ONCE_DEPTH_CONV EXP_MOD_CONV THENC INT_REDUCE_CONV;;
 
 (* ------------------------------------------------------------------------- *)
+(* Explicit computation rules to evaluate mod-8380417 powers less naively.   *)
+(* ------------------------------------------------------------------------- *)
+
+let BITREVERSE8_CLAUSES = end_itlist CONJ (map
+ (GEN_REWRITE_CONV I [bitreverse8] THENC DEPTH_CONV WORD_NUM_RED_CONV)
+ (map (curry mk_comb `bitreverse8` o mk_small_numeral) (0--255)));;
+
+let MLDSA_FORWARD_NTT_ALT = prove
+ (`mldsa_forward_ntt f k =
+   isum (0..127)
+        (\j. f(2 * j + k MOD 2) *
+             (&1753 pow ((2 * bitreverse8 (k DIV 2) + 1) * j)) rem &8380417)
+    rem &8380417`,
+  REWRITE_TAC[mldsa_forward_ntt] THEN MATCH_MP_TAC
+   (REWRITE_RULE[] (ISPEC
+      `(\x y. x rem &8380417 = y rem &8380417)` ISUM_RELATED)) THEN
+  REWRITE_TAC[INT_REM_EQ; FINITE_NUMSEG; INT_CONG_ADD] THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  REWRITE_TAC[GSYM INT_OF_NUM_REM; GSYM INT_OF_NUM_CLAUSES;
+              GSYM INT_REM_EQ] THEN
+  CONV_TAC INT_REM_DOWN_CONV THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC INT_ARITH);;
+
+let MLDSA_INVERSE_NTT_ALT = prove
+ (`mldsa_inverse_ntt f k =
+    isum (0..127)
+      (\j. f(2 * bitreverse8 j + k MOD 2) *
+           (&1999744 *
+            (&731434 pow ((2 * j + 1) * k DIV 2)) rem &8380417)
+           rem &8380417) rem &8380417`,
+  REWRITE_TAC[mldsa_inverse_ntt; GSYM ISUM_LMUL] THEN MATCH_MP_TAC
+   (REWRITE_RULE[] (ISPEC
+      `(\x y. x rem &8380417 = y rem &8380417)` ISUM_RELATED)) THEN
+  REWRITE_TAC[INT_REM_EQ; FINITE_NUMSEG; INT_CONG_ADD] THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  REWRITE_TAC[GSYM INT_OF_NUM_REM; GSYM INT_OF_NUM_CLAUSES;
+              GSYM INT_REM_EQ] THEN
+  CONV_TAC INT_REM_DOWN_CONV THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC INT_ARITH);;
+
+let MLDSA_FORWARD_NTT_CONV =
+  GEN_REWRITE_CONV I [MLDSA_FORWARD_NTT_ALT] THENC
+  LAND_CONV EXPAND_ISUM_CONV THENC
+  DEPTH_CONV NUM_RED_CONV THENC
+  GEN_REWRITE_CONV ONCE_DEPTH_CONV [BITREVERSE8_CLAUSES] THENC
+  DEPTH_CONV NUM_RED_CONV THENC
+  GEN_REWRITE_CONV DEPTH_CONV [INT_OF_NUM_POW; INT_OF_NUM_REM] THENC
+  ONCE_DEPTH_CONV EXP_MOD_CONV THENC INT_REDUCE_CONV;;
+
+let MLDSA_INVERSE_NTT_CONV =
+  GEN_REWRITE_CONV I [MLDSA_INVERSE_NTT_ALT] THENC
+  LAND_CONV EXPAND_ISUM_CONV THENC
+  DEPTH_CONV NUM_RED_CONV THENC
+  GEN_REWRITE_CONV ONCE_DEPTH_CONV [BITREVERSE8_CLAUSES] THENC
+  DEPTH_CONV NUM_RED_CONV THENC
+  GEN_REWRITE_CONV DEPTH_CONV [INT_OF_NUM_POW; INT_OF_NUM_REM] THENC
+  ONCE_DEPTH_CONV EXP_MOD_CONV THENC INT_REDUCE_CONV;;
+
+(* ------------------------------------------------------------------------- *)
 (* Abbreviate the Barrett reduction and multiplication and Montgomery        *)
 (* reduction patterns in the code.                                           *)
 (* ------------------------------------------------------------------------- *)
@@ -198,7 +308,7 @@ let mldsa_montred = define
     word_subword
      (word_add
        (word_mul ((word_sx:int32->int64)
-                    (word_mul (word_subword x (0,32)) (word 58728449)))
+                    (word_mul (word_subword x (0,32)) (word 4236238847)))
                  (word 8380417))
        x)
      (32,32)`;;
@@ -499,6 +609,30 @@ let MONTRED_LEMMA = prove
    `(a * b + 1 == 0) (mod d) ==> d divides ((x * a) * b + x)`) THEN
   REWRITE_TAC[CONG] THEN ARITH_TAC);;
 
+let MONTRED_MLDSA_LEMMA = prove
+ (`!x. &2 pow 32 * ival(mldsa_montred x) =
+       ival(word_add
+         (word_mul (word_sx(iword(ival x * &4236238847):int32)) (word 8380417)) x)`,
+  GEN_TAC THEN REWRITE_TAC[mldsa_montred] THEN REWRITE_TAC[WORD_BLAST
+   `word_subword (x:int64) (0,32):int32 = word_sx x`] THEN
+  REWRITE_TAC[IWORD_INT_MUL; GSYM word_sx; GSYM WORD_IWORD] THEN
+  REWRITE_TAC[WORD_BLAST `(word_sx:int64->int32) x = word_zx x`] THEN
+  CONV_TAC INT_REDUCE_CONV THEN MATCH_MP_TAC(BITBLAST_RULE
+   `word_and x (word 4294967295):int64 = word 0
+    ==> &4294967296 * ival(word_subword x (32,32):int32) = ival x`) THEN
+  REWRITE_TAC[BITBLAST_RULE
+   `word_and x (word 4294967295):int64 = word 0 <=> word_zx x:int32 = word 0`] THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) WORD_ZX_ADD o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_32; DIMINDEX_64; ARITH] THEN DISCH_THEN SUBST1_TAC THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) WORD_ZX_MUL o lhand o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_32; DIMINDEX_64; ARITH] THEN DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[WORD_BLAST `word_zx(word_sx (x:int32):int64) = x`] THEN
+  REWRITE_TAC[GSYM VAL_EQ_0; VAL_WORD_ADD; VAL_WORD_MUL; VAL_WORD] THEN
+  CONV_TAC MOD_DOWN_CONV THEN REWRITE_TAC[GSYM DIVIDES_MOD; DIMINDEX_32] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN MATCH_MP_TAC(NUMBER_RULE
+   `(a * b + 1 == 0) (mod d) ==> d divides ((x * a) * b + x)`) THEN
+  REWRITE_TAC[CONG] THEN ARITH_TAC);;
+
 let CONGBOUND_MONTRED = prove
  (`!a a' l u.
       (ival a == a') (mod &3329) /\ l <= ival a /\ ival a <= u
@@ -531,6 +665,43 @@ let CONGBOUND_MONTRED = prove
    `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
   ASM_INT_ARITH_TAC);;
 
+(* CONGBOUND_MLDSA_MONTRED *)
+(* TODO OFFSET1 OFFSET2 *)
+
+(***
+g(`!a a' l u.
+      (ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u
+      ==> --(&4611686018427387904) <= l /\ u <= &4611686018427387904
+          ==> (ival(mldsa_montred a) == &(inverse_mod 8380417 4294967296) * a') (mod &8380417) /\
+              (l - &OFFSET1) div &2 pow 32 <= ival(mldsa_montred a) /\
+              ival(mldsa_montred a) <= &1 + (u + &OFFSET2) div &2 pow 32`);;
+
+e(REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC);;
+e(CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV));;
+e(MP_TAC(SPECL [`&(inverse_mod 8380417 4294967296):int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
+ `!d e n:int. (e * d == &1) (mod n)
+              ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)));;
+e(ANTS_TAC THENL
+   [REWRITE_TAC[GSYM INT_REM_EQ] THEN INT_ARITH_TAC;
+    DISCH_THEN(fun th -> REWRITE_TAC[th])]);;
+e(ONCE_REWRITE_TAC[INT_ARITH
+   `l:int <= x <=> &2 pow 32 * l <= &2 pow 32 * x`]);;
+e(REWRITE_TAC[MONTRED_MLDSA_LEMMA]);;
+e(REWRITE_TAC[WORD_RULE
+   `word_add (word_mul a b) c = iword(ival a * ival b + ival c)`]);;
+e(ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH]);;
+e(W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
+   lhand o rator o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV));;
+e(W(MP_TAC o C ISPEC IVAL_BOUND o
+    rand o funpow 3 lhand o rand o lhand o lhand o snd));;
+e(REWRITE_TAC[DIMINDEX_32; ARITH] THEN STRIP_TAC);;
+e(ANTS_TAC THENL [ASM_INT_ARITH_TAC; DISCH_THEN SUBST1_TAC]);;
+e(ASM_REWRITE_TAC[INTEGER_RULE
+   `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
+  ASM_INT_ARITH_TAC);;
+
+***)
 let CONGBOUND_MLDSA_BARRED = prove
  (`!a a' l u.
         ((ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u)
@@ -589,6 +760,9 @@ let GEN_CONGBOUND_RULE aboths =
     | Comb(Const("montred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 3329) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MONTRED th1))
+    | Comb(Const("mldsa_montred",_),t) ->
+        let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
+        CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_MONTRED th1))
     | Comb(Const("mldsa_barred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_BARRED th1))
