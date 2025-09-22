@@ -4426,60 +4426,46 @@ let mldsa_zetas_optimized_twiddles = define
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
 
- g(`!a zetas (zetas_data:int32 list) x pc.
-        aligned 32 a /\
-        aligned 32 zetas /\
-        nonoverlapping (word pc,0x3070) (a, 1024) /\
-        nonoverlapping (word pc,0x3070) (zetas, 1344) /\
-        nonoverlapping (a, 1024) (zetas, 1344)
-        ==> ensures x86
-             (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
-                  read RIP s = word pc /\
-                  C_ARGUMENTS [a; zetas] s /\
-                  wordlist_from_memory(zetas,336) s = zetas_data /\
-                  !i. i < 256
-                      ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
-                          x i)
-             (\s. read RIP s = word(pc + 0x3070) /\
-                  (zetas_data = MAP iword mldsa_zetas_optimized_twiddles /\
-                   (!i. i < 256 ==> abs(ival(x i)) <= &8380416)
-                   ==> !i. i < 256
-                           ==> let zi =
-                          read(memory :> bytes32(word_add a (word(4 * i)))) s in
-                          (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
-                          abs(ival zi) <= &6283008))
-             (MAYCHANGE [RIP] ,, MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
-              MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
-              MAYCHANGE [memory :> bytes(a,1024)])`);;
-  e(REWRITE_TAC[NONOVERLAPPING_CLAUSES; C_ARGUMENTS; fst MLDSA_NTT_TMC_EXEC]);;
+g(`!a zetas x pc.
+      aligned 32 a /\
+      aligned 32 zetas /\
+      nonoverlapping (word pc,0x3070) (a, 1024) /\
+      nonoverlapping (word pc,0x3070) (zetas, 1344) /\
+      nonoverlapping (a, 1024) (zetas, 1344)
+      ==> ensures x86
+           (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
+                read RIP s = word pc /\
+                C_ARGUMENTS [a; zetas] s /\
+                wordlist_from_memory(zetas,336) s = MAP iword mldsa_zetas_optimized_twiddles /\
+                !i. i < 256
+                    ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
+                        x i)
+           (\s. read RIP s = word(pc + 0x3070) /\
+                ((!i. i < 256 ==> abs(ival(x i)) <= &8380416)
+                 ==> !i. i < 256
+                         ==> let zi =
+                        read(memory :> bytes32(word_add a (word(4 * i)))) s in
+                        (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
+                        abs(ival zi) <= &6283008))
+           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+            MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+            MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
+            MAYCHANGE [memory :> bytes(a,1024)])`);;
 
-  e(REPEAT STRIP_TAC);;
 
-  (*** Case split on zetas_data being the correct constants ***)
-  e(ASM_CASES_TAC
-   `zetas_data:int32 list = MAP iword mldsa_zetas_optimized_twiddles`);;
-  e(ASM_REWRITE_TAC[CONJ_ASSOC] THEN REWRITE_TAC[GSYM CONJ_ASSOC]);;
-  e(FIRST_X_ASSUM SUBST1_TAC);;
+   (* Step 1: First apply the working tactic *)
+e(MAP_EVERY X_GEN_TAC
+   [`a:int64`; `zetas:int64`; `x:num->int32`; `pc:num`] THEN
+  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; C_ARGUMENTS;
+              NONOVERLAPPING_CLAUSES; ALL] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC));;
 
-  (*** Manually expand the cases in the hypotheses ***)
-  e(CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))));;
-  e(CONV_TAC(ONCE_DEPTH_CONV WORDLIST_FROM_MEMORY_CONV));;
-  e(REWRITE_TAC[mldsa_zetas_optimized_twiddles]);;
-  e(REWRITE_TAC[MAP; CONS_11] THEN CONV_TAC(ONCE_DEPTH_CONV WORD_IWORD_CONV));;
-  e(CONV_TAC NUM_REDUCE_CONV);;
-  e(REPEAT STRIP_TAC);;
+(* now getting stuck on Stepping to state s4, first load of Zetas? *)
 
-  e(ENSURES_INIT_TAC "s0");;
-
-  (*** Restructure memory to match 256-bit loads ***)
-  e(MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 3
-            (subst[mk_small_numeral(32*n),`n:num`]
-                  `read (memory :> bytes256(word_add a (word n))) s0`))
-            (0--31))) THEN
-  ASM_REWRITE_TAC[WORD_ADD_0] THEN
-  DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 a) s = x`] THEN
-  STRIP_TAC);;
-
-  (*** Simulate the execution with 50 steps ***)
-  e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--50));;
-  (* hangs at first simulation :( *)
+e(ASM_CASES_TAC
+   `zetas_data:int32 list = MAP iword mldsa_zetas_optimized_twiddles` THEN
+  ASM_REWRITE_TAC[CONJ_ASSOC] THEN REWRITE_TAC[GSYM CONJ_ASSOC] THENL
+   [FIRST_X_ASSUM SUBST1_TAC;
+    X86_QUICKSIM_TAC MLDSA_NTT_TMC_EXEC
+     [`read RDI s = a`; `read RSI s = zetas`]
+     (1--50)]);;

@@ -665,43 +665,53 @@ let CONGBOUND_MONTRED = prove
    `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
   ASM_INT_ARITH_TAC);;
 
-(* CONGBOUND_MLDSA_MONTRED *)
-(* TODO OFFSET1 OFFSET2 *)
-
-(***
-g(`!a a' l u.
+let CONGBOUND_MLDSA_MONTRED = prove
+ (`!a a' l u.
       (ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u
-      ==> --(&4611686018427387904) <= l /\ u <= &4611686018427387904
-          ==> (ival(mldsa_montred a) == &(inverse_mod 8380417 4294967296) * a') (mod &8380417) /\
-              (l - &OFFSET1) div &2 pow 32 <= ival(mldsa_montred a) /\
-              ival(mldsa_montred a) <= &1 + (u + &OFFSET2) div &2 pow 32`);;
-
-e(REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC);;
-e(CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV));;
-e(MP_TAC(SPECL [`&(inverse_mod 8380417 4294967296):int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
- `!d e n:int. (e * d == &1) (mod n)
-              ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)));;
-e(ANTS_TAC THENL
-   [REWRITE_TAC[GSYM INT_REM_EQ] THEN INT_ARITH_TAC;
-    DISCH_THEN(fun th -> REWRITE_TAC[th])]);;
-e(ONCE_REWRITE_TAC[INT_ARITH
-   `l:int <= x <=> &2 pow 32 * l <= &2 pow 32 * x`]);;
-e(REWRITE_TAC[MONTRED_MLDSA_LEMMA]);;
-e(REWRITE_TAC[WORD_RULE
-   `word_add (word_mul a b) c = iword(ival a * ival b + ival c)`]);;
-e(ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH]);;
-e(W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
+      ==> --(&9205375228383854592) <= l /\ u <= &9205375228392235008
+          ==> (ival(mldsa_montred a) == &(inverse_mod 8380417 4294967296) * a')
+              (mod &8380417) /\
+              (l - &17996808470921216) div &2 pow 32 <= ival(mldsa_montred a) /\
+              ival(mldsa_montred a) <= &1 + (u + &17996808462540799) div &2 pow 32`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV) THEN
+  MP_TAC(SPECL [`&(inverse_mod 8380417 4294967296):int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
+   `!d e n:int. (e * d == &1) (mod n)
+                ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)) THEN
+  CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[GSYM INT_REM_EQ] THEN CONV_TAC INT_REDUCE_CONV;
+    DISCH_THEN(fun th -> REWRITE_TAC[th])] THEN
+  ONCE_REWRITE_TAC[INT_ARITH
+   `l:int <= x <=> &2 pow 32 * l <= &2 pow 32 * x`] THEN
+  REWRITE_TAC[MONTRED_MLDSA_LEMMA] THEN
+  REWRITE_TAC[WORD_RULE
+   `word_add (word_mul a b) c = iword(ival a * ival b + ival c)`] THEN
+  ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH] THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
    lhand o rator o lhand o snd) THEN
-  REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV));;
-e(W(MP_TAC o C ISPEC IVAL_BOUND o
-    rand o funpow 3 lhand o rand o lhand o lhand o snd));;
-e(REWRITE_TAC[DIMINDEX_32; ARITH] THEN STRIP_TAC);;
-e(ANTS_TAC THENL [ASM_INT_ARITH_TAC; DISCH_THEN SUBST1_TAC]);;
-e(ASM_REWRITE_TAC[INTEGER_RULE
+  REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  ANTS_TAC THENL
+   [SUBGOAL_THEN
+     `--(&9205375228383854592) <= ival(a:int64) /\
+      ival(a:int64) <= &9205375228392235008`
+    MP_TAC THENL [ASM_INT_ARITH_TAC; ALL_TAC] THEN
+    POP_ASSUM_LIST(K ALL_TAC) THEN STRIP_TAC THEN
+    ASM BOUNDER_TAC[];
+    DISCH_THEN SUBST1_TAC] THEN
+  ASM_REWRITE_TAC[INTEGER_RULE
    `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
-  ASM_INT_ARITH_TAC);;
+  CONJ_TAC THENL
+   [FIRST_X_ASSUM(MATCH_MP_TAC o MATCH_MP (INT_ARITH
+     `l:int <= a ==> x - l <= p ==> x <= p + a`)) THEN
+    TRANS_TAC INT_LE_TRANS `--(&2 pow 31) *  &8380417:int` THEN
+    CONJ_TAC THENL [ASM_INT_ARITH_TAC; BOUNDER_TAC[]];
+    FIRST_X_ASSUM(MATCH_MP_TAC o MATCH_MP (INT_ARITH
+     `a:int <= u ==> x <= p - u ==> x + a <= p`)) THEN
+    TRANS_TAC INT_LE_TRANS `(&2 pow 31 - &1) *  &8380417:int` THEN
+    CONJ_TAC THENL [BOUNDER_TAC[]; ASM_INT_ARITH_TAC]]);;
 
-***)
+
 let CONGBOUND_MLDSA_BARRED = prove
  (`!a a' l u.
         ((ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u)
