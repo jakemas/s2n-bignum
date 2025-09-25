@@ -4545,3 +4545,60 @@ e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
    CONV_RULE(SIMD_SIMPLIFY_CONV[mldsa_montred]) o
    CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
    check (can (term_match [] `read qqq s2337:int256 = xxx`) o concl))));;
+
+
+   ---- new
+
+   g(`!a zetas (zetas_list:int32 list) x pc.
+      aligned 32 a /\
+      aligned 32 zetas /\
+      nonoverlapping (word pc,0x3070) (a, 1024) /\
+      nonoverlapping (word pc,0x3070) (zetas, 2496) /\
+      nonoverlapping (a, 1024) (zetas, 2496)
+      ==> ensures x86
+           (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
+                read RIP s = word pc /\
+                C_ARGUMENTS [a; zetas] s /\
+                wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
+                 (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
+                !i. i < 256
+                    ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
+                        x i)
+           (\s. read RIP s = word(pc + 0x3070) /\
+                (!i. i < 256
+                         ==> let zi =
+                        read(memory :> bytes32(word_add a (word(4 * i)))) s in
+                        (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
+                        abs(ival zi) <= &6283008))
+           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+            MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+            MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
+            MAYCHANGE [memory :> bytes(a,1024)])`);;
+
+(* Step 1: Setup - introduce variables and break down assumptions *)
+e(MAP_EVERY X_GEN_TAC
+   [`a:int64`; `zetas:int64`; `zetas_list:int32 list`; `x:num->int32`; `pc:num`] THEN
+  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; C_ARGUMENTS;
+              NONOVERLAPPING_CLAUSES; ALL] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC));;
+
+e(CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  REPEAT STRIP_TAC);;
+  
+e(REWRITE_TAC [SOME_FLAGS; fst MLDSA_NTT_TMC_EXEC]);;
+
+e(GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
+  GHOST_INTRO_TAC `init_ymm1:int256` `read YMM1` THEN
+  GHOST_INTRO_TAC `init_ymm2:int256` `read YMM2`);;
+
+e(ENSURES_INIT_TAC "s0" );;
+
+e(MP_TAC(end_itlist CONJ (map (fun n -> 
+    READ_MEMORY_MERGE_CONV 3 (subst[mk_small_numeral(32*n),`n:num`] 
+      `read (memory :> bytes256(word_add zetas (word n))) s0`)) (0--77))) THEN
+  ASM_REWRITE_TAC[WORD_ADD_0] THEN 
+  DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 a) s = x`] THEN 
+  STRIP_TAC);;
+
+e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [3]);;
