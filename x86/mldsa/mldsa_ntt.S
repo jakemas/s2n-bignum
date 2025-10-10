@@ -55,33 +55,33 @@ vpunpckhqdq	ymm\r3,ymm\r0,ymm\r1
 
 .macro shuffle2 r0,r1,r2,r3
 vmovsldup	ymm\r2,ymm\r1
-vpblendd	ymm\r2,ymm\r2,ymm\r0,0xAA
+vpblendd	ymm\r2,ymm\r0,ymm\r2,0xAA
 vpsrlq		ymm\r0,ymm\r0,32
-vpblendd	ymm\r3,ymm\r1,ymm\r0,0xAA
+vpblendd	ymm\r3,ymm\r0,ymm\r1,0xAA
 .endm
 
 .macro butterfly l,h,zl0=1,zl1=1,zh0=2,zh1=2
-vpmuldq		ymm\zl0,ymm\h,ymm13
-vmovshdup	ymm\h,ymm12
-vpmuldq		ymm\zl1,ymm12,ymm14
+vpmuldq		ymm13,ymm\h,ymm\zl0
+vmovshdup	ymm12,ymm\h
+vpmuldq		ymm14,ymm12,ymm\zl1
 
-vpmuldq		ymm\zh0,ymm\h,ymm\h
-vpmuldq		ymm\zh1,ymm12,ymm12
+vpmuldq		ymm\h,ymm\h,ymm\zh0
+vpmuldq		ymm12,ymm12,ymm\zh1
 
-vpmuldq		ymm0,ymm13,ymm13
-vpmuldq		ymm0,ymm14,ymm14
+vpmuldq		ymm13,ymm13,ymm0
+vpmuldq		ymm14,ymm14,ymm0
 
 vmovshdup	ymm\h,ymm\h
-vpblendd	ymm12,ymm\h,ymm\h,0xAA
+vpblendd	ymm\h,ymm\h,ymm12,0xAA
 
-vpsubd		ymm\h,ymm\l,ymm12
-vpaddd		ymm\h,ymm\l,ymm\l
+vpsubd		ymm12,ymm\l,ymm\h
+vpaddd		ymm\l,ymm\l,ymm\h
 
 vmovshdup	ymm13,ymm13
-vpblendd	ymm14,ymm13,ymm13,0xAA
+vpblendd	ymm13,ymm13,ymm14,0xAA
 
-vpaddd		ymm13,ymm12,ymm\h
-vpsubd		ymm13,ymm\l,ymm\l
+vpaddd		ymm\h,ymm12,ymm13
+vpsubd		ymm\l,ymm\l,ymm13
 .endm
 
 .macro levels0t1 off
@@ -178,8 +178,8 @@ shuffle2	10,11,3,11
 /* level 5 */
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+72+8*\off)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+72+8*\off)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 
 butterfly	9,5,1,10,2,15
 butterfly	8,4,1,10,2,15
@@ -189,41 +189,41 @@ butterfly	6,11,1,10,2,15
 /* level 6 */
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+104+8*\off)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+104+8*\off)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	9,7,1,10,2,15
 butterfly	8,6,1,10,2,15
 
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+104+8*\off+32)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+104+8*\off+32)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	5,3,1,10,2,15
 butterfly	4,11,1,10,2,15
 
 /* level 7 */
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+168+8*\off)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+168+8*\off)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	9,8,1,10,2,15
 
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+168+8*\off+32)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+168+8*\off+32)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	7,6,1,10,2,15
 
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+168+8*\off+64)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+168+8*\off+64)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	5,4,1,10,2,15
 
 vmovdqa		ymm1,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS_QINV+168+8*\off+96)*4]
 vmovdqa		ymm2,[rsi+(MLD_AVX2_BACKEND_DATA_OFFSET_ZETAS+168+8*\off+96)*4]
-vpsrlq		ymm1,ymm10,32
-vmovshdup	ymm2,ymm15
+vpsrlq		ymm10,ymm1,32
+vmovshdup	ymm15,ymm2
 butterfly	3,11,1,10,2,15
 
 vmovdqa		[rdi+0+256*\off],ymm9
