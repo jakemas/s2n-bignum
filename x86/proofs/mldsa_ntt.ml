@@ -4547,9 +4547,16 @@ e(FIRST_ASSUM(MP_TAC o check
    (CONV_TAC(LAND_CONV(READ_MEMORY_SPLIT_CONV 3)) THEN
     CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC));;
 
-(*** Try running the simulation for a bit now ***)
+(*** simulate to the end ***)
+e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--2327));;
 
-e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--11));;
+ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];;
 
-(*** keep simulating to end ***)
-e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (12--2337));;
+(*** Reverse the restructuring by splitting the 256-bit words back to 32-bit ***)
+
+REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+   CONV_RULE(SIMD_SIMPLIFY_CONV[mldsa_forward_ntt]) o
+   CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
+   check (can (term_match [] `read qqq s2327:int256 = xxx`) o concl)));;
+
+
