@@ -4547,8 +4547,35 @@ e(FIRST_ASSUM(MP_TAC o check
    (CONV_TAC(LAND_CONV(READ_MEMORY_SPLIT_CONV 3)) THEN
     CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC));;
 
+(*** test a few simulations before things get too slow
+e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--20));;
+***)
+
 (*** simulate to the end ***)
-e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--2327));;
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montred; mldsa_montmul])
+        (1--200));;
+
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montred])
+        (1--400));;
+
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montred])
+        (401--600));;
+
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montred])
+        (601--700));;
+
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montred])
+        (701--800));;
 
 ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];;
 

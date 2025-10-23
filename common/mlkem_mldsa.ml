@@ -325,6 +325,16 @@ let mldsa_montred = define
        x)
      (32,32)`;;
 
+let mldsa_montmul = define
+  `(mldsa_montmul:int32->int32) x =
+   word_subword
+    (word_mul
+     (word_sx
+      (word_subword (word_mul (word_sx x) (word 1830765815)) (0,32)))
+     (word 8380417))
+   (32,32)`;;
+
+
 (* ------------------------------------------------------------------------- *)
 (* From |- (x == y) (mod m) /\ P   to   |- (x == y) (mod n) /\ P             *)
 (* ------------------------------------------------------------------------- *)
@@ -757,6 +767,33 @@ let CONGBOUND_MLDSA_MONTRED = prove
     CONJ_TAC THENL [BOUNDER_TAC[]; ASM_INT_ARITH_TAC]]);;
 
 
+let CONGBOUND_MLDSA_MONTMUL = prove
+ (`!a a' l u.
+      (ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u
+      ==> --(&4190208) <= l /\ u <= &4190208
+          ==> (ival(mldsa_montmul a) == a' * &1830765815) (mod &8380417) /\
+              (l * &1830765815) div &2 pow 32 <= ival(mldsa_montmul a) /\
+              ival(mldsa_montmul a) <= &1 + (u * &1830765815) div &2 pow 32`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[mldsa_montmul] THEN
+  REWRITE_TAC[WORD_RULE
+   `word_subword (word_mul a b) (32,32) = 
+    iword(ival a * ival b div &2 pow 32)`] THEN
+  ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; ARITH] THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
+   lhand o rator o lhand o snd) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  ANTS_TAC THENL
+   [SUBGOAL_THEN `--(&4190208) <= ival(a:int32) /\ ival(a:int32) <= &4190208`
+    MP_TAC THENL [ASM_INT_ARITH_TAC; ALL_TAC] THEN
+    POP_ASSUM_LIST(K ALL_TAC) THEN STRIP_TAC THEN
+    ASM BOUNDER_TAC[];
+    DISCH_THEN SUBST1_TAC] THEN
+  ASM_REWRITE_TAC[INTEGER_RULE
+   `(a * k:int == b * k) (mod p) <=> (a == b) (mod p) \/ p divides k`] THEN
+  DISJ1_TAC THEN ASM_REWRITE_TAC[] THEN
+  ASM_INT_ARITH_TAC);;
+
 let CONGBOUND_MLDSA_BARRED = prove
  (`!a a' l u.
         ((ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u)
@@ -821,6 +858,9 @@ let GEN_CONGBOUND_RULE aboths =
     | Comb(Const("mldsa_montred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_MONTRED th1))
+    | Comb(Const("mldsa_montmul",_),t) ->
+        let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
+        CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_MONTMUL th1))
     | Comb(Const("mldsa_barred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_BARRED th1))
