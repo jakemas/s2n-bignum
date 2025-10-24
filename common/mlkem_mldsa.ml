@@ -326,14 +326,14 @@ let mldsa_montred = define
      (32,32)`;;
 
 let mldsa_montmul = define
- `(mldsa_montmul:int32->int32->int32->int32) a b b_qinv =
-   word_sub
-    (word_subword (word_mul (word_sx a:int64) (word_sx b:int64)) (32,32):int32)
-    (word_subword
-     (word_mul
-      (word_sx (word_subword (word_mul (word_sx a:int64) (word_sx b:int64)) (0,32):int32):int64)
-      (word_sx b_qinv:int64))
-     (32,32):int32)`;;
+   `mldsa_montmul (a:int64) (b:int64) (x:int32) =
+    word_sub
+     (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+     (word_subword
+       (word_mul (word_sx
+         (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+         (word 8380417:int64))
+       (32,32))`;;
 
 (* ------------------------------------------------------------------------- *)
 (* From |- (x == y) (mod m) /\ P   to   |- (x == y) (mod n) /\ P             *)
@@ -788,6 +788,29 @@ let CONGBOUND_MLDSA_BARRED = prove
   DISCH_THEN(fun th -> REWRITE_TAC[GSYM th]) THEN
   ASM_REWRITE_TAC[INTEGER_RULE
    `(x - p * q:int == y) (mod p) <=> (x == y) (mod p)`]);;
+
+let WORD_ADD_MLDSA_MONTMUL = prove
+ (`word_add y (mldsa_montmul a b x) =
+   word_sub (word_add
+    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+    y)
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul] THEN CONV_TAC WORD_RULE);;
+
+let WORD_SUB_MLDSA_MONTMUL = prove
+ (`word_sub y (mldsa_montmul a b x) =
+   word_add (word_sub y
+        (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
+    (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul] THEN CONV_TAC WORD_RULE);;
 
 let CONCL_BOUNDS_RULE =
   CONV_RULE(BINOP2_CONV

@@ -194,31 +194,25 @@ e(FIRST_ASSUM(MP_TAC o check
 e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--20));;
 ***)
 
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montmul; WORD_ADD_MLDSA_MONTMUL;
+                  WORD_SUB_MLDSA_MONTMUL])
+        (1--71));;
+
+e(MAP_EVERY (fun n ->
+X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+SIMD_SIMPLIFY_TAC[mldsa_montmul; WORD_ADD_MLDSA_MONTMUL;
+                  WORD_SUB_MLDSA_MONTMUL])
+        (72--2327));;
+
+
 (*** simulate to the end ***)
 e(MAP_EVERY (fun n ->
 X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
 SIMD_SIMPLIFY_TAC[mldsa_montred; mldsa_montmul])
-        (1--150));;
+        (1--2327));;
 
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montred])
-        (1--400));;
-
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montred])
-        (401--600));;
-
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montred])
-        (601--700));;
-
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montred])
-        (701--800));;
 
 ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];;
 
