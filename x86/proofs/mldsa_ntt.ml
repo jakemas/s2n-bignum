@@ -102,53 +102,6 @@ let mldsa_complete_qdata = define
    -- &1799107; &269760; &472078; &1910376; -- &3833893; -- &2286327; -- &3545687; -- &1362209; &1976782
    ]`;;
 
-(* ------------------------------------------------------------------------- *)
-(* Montgomery multiplication idiom and some elaborated forms of it.          *)
-(* ------------------------------------------------------------------------- *)
-
-let mldsa_montmul2 = define
- `mldsa_montmul2 (a:int64) (b:int64) (x:int32) =
-  word_sub
-  (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
-  (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`;;
-
-let WORD_ADD_MLDSA_MONTMUL2 = prove
- (`word_add y (mldsa_montmul2 a b x) =
-   word_sub (word_add
-    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
-    y)
-  (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`,
-  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
-
-let WORD_SUB_MLDSA_MONTMUL2 = prove
- (`word_sub y (mldsa_montmul2 a b x) =
-  word_add (word_sub y
-        (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
-    (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`,
-  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
-
-let WORD_ADD_MLDSA_MONTMUL2_ALT = prove
- (`word_add y (mldsa_montmul2 a b x) =
-   word_sub (word_add y
-    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
-  (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`,
-  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
 (* Correctness proof.                                                        *)

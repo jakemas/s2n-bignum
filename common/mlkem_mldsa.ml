@@ -305,7 +305,7 @@ let montred = define
      (16,16)`;;
 
 (* ------------------------------------------------------------------------- *)
-(* Analogous ML-DSA idioms.                                                  *)
+(* ML-DSA Montgomery multiplication idiom and some elaborated forms of it.   *)                                                 *)
 (* ------------------------------------------------------------------------- *)
 
 let mldsa_barred = define
@@ -325,15 +325,49 @@ let mldsa_montred = define
        x)
      (32,32)`;;
 
-let mldsa_montmul = define
-   `mldsa_montmul (a:int64) (b:int64) (x:int32) =
-    word_sub
-     (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
-     (word_subword
-       (word_mul (word_sx
-         (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-         (word 8380417:int64))
-       (32,32))`;;
+let mldsa_montmul2 = define
+ `mldsa_montmul2 (a:int64) (b:int64) (x:int32) =
+  word_sub
+  (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`;;
+
+let WORD_ADD_MLDSA_MONTMUL2 = prove
+ (`word_add y (mldsa_montmul2 a b x) =
+   word_sub (word_add
+    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+    y)
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
+
+let WORD_SUB_MLDSA_MONTMUL2 = prove
+ (`word_sub y (mldsa_montmul2 a b x) =
+  word_add (word_sub y
+        (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
+    (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
+
+let WORD_ADD_MLDSA_MONTMUL2_ALT = prove
+ (`word_add y (mldsa_montmul2 a b x) =
+   word_sub (word_add y
+    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
 (* From |- (x == y) (mod m) /\ P   to   |- (x == y) (mod n) /\ P             *)
@@ -720,51 +754,100 @@ let CONGBOUND_MONTRED = prove
    `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
   ASM_INT_ARITH_TAC);;
 
-let CONGBOUND_MLDSA_MONTRED = prove
- (`!a a' l u.
-      (ival a == a') (mod &8380417) /\ l <= ival a /\ ival a <= u
-      ==> --(&9205375228383854592) <= l /\ u <= &9205375228392235008
-          ==> (ival(mldsa_montred a) == &(inverse_mod 8380417 4294967296) * a')
-              (mod &8380417) /\
-              (l - &17996808470921216) div &2 pow 32 <= ival(mldsa_montred a) /\
-              ival(mldsa_montred a) <= &1 + (u + &17996808462540799) div &2 pow 32`,
-  REPEAT GEN_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+let CONGBOUND_MLDSA_MONTMUL2 = prove
+ (`!x x' lx ux.
+       ((ival x == x') (mod &8380417) /\ lx <= ival x /\ ival x <= ux)
+       ==> !a b. --(&2147483648) <= ival a /\
+                 ival a <= &2147483647 /\
+                 (&8380417 * ival b) rem &4294967296 = ival a rem &4294967296
+                 ==> (ival(mldsa_montmul2 a b x) ==
+                     &(inverse_mod 8380417 4294967296) * ival a * x')
+                     (mod &8380417) /\
+                     (min (ival a * lx) (ival a * ux) - &17996808462540799)
+                     div &4294967296 <= ival(mldsa_montmul2 a b x) /\
+                     ival(mldsa_montmul2 a b x) <=
+                     (max (ival a * lx) (ival a * ux) + &17996812765888511)
+                     div &2 pow 32`,
+  let lemma = prove
+   (`l:int <= x /\ x <= u
+     ==> !a. a * l <= a * x /\ a * x <= a * u \/
+             a * u <= a * x /\ a * x <= a * l`,
+    MESON_TAC[INT_LE_NEGTOTAL; INT_LE_LMUL;
+              INT_ARITH `a * x:int <= a * y <=> --a * y <= --a * x`])
+  and ilemma = prove
+   (`!x:int64. ival(word_subword x (32,32):int32) = ival x div &2 pow 32`,
+    REWRITE_TAC[GSYM DIMINDEX_16; GSYM IVAL_WORD_ISHR] THEN
+    GEN_TAC THEN REWRITE_TAC[DIMINDEX_16] THEN BITBLAST_TAC) in
+  let mainlemma = prove
+   (`!x:int64 y:int64.
+          (ival x == ival y) (mod (&2 pow 32))
+          ==> &2 pow 32 *
+              ival(word_sub (word_subword x (32,32))
+                            (word_subword y (32,32)):int32) =
+              ival(word_sub x y)`,
+    REPEAT STRIP_TAC THEN MATCH_MP_TAC(INT_ARITH
+     `b rem &2 pow 32 = &0 /\ a = &2 pow 32 * b div &2 pow 32 ==> a = b`) THEN
+    CONJ_TAC THENL
+     [REWRITE_TAC[WORD_SUB_IMODULAR; imodular; INT_REM_EQ_0] THEN
+      SIMP_TAC[INT_DIVIDES_IVAL_IWORD; DIMINDEX_64; ARITH] THEN
+      POP_ASSUM MP_TAC THEN CONV_TAC INTEGER_RULE;
+      AP_TERM_TAC THEN REWRITE_TAC[GSYM ilemma] THEN AP_TERM_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE I [GSYM INT_REM_EQ]) THEN
+    SIMP_TAC[INT_REM_IVAL; DIMINDEX_16; DIMINDEX_64; ARITH] THEN
+    BITBLAST_TAC) in
+  REPEAT GEN_TAC THEN DISCH_TAC THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
   CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV) THEN
-  MP_TAC(SPECL [`&(inverse_mod 8380417 4294967296):int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
-   `!d e n:int. (e * d == &1) (mod n)
-                ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)) THEN
-  CONV_TAC(ONCE_DEPTH_CONV INVERSE_MOD_CONV) THEN
+  MP_TAC(SPECL [`&8265825:int`; `(&2:int) pow 32`; `&8380417:int`] (INTEGER_RULE
+ `!d e n:int. (e * d == &1) (mod n)
+              ==> !x y. ((x == d * y) (mod n) <=> (e * x == y) (mod n))`)) THEN
   ANTS_TAC THENL
-   [REWRITE_TAC[GSYM INT_REM_EQ] THEN CONV_TAC INT_REDUCE_CONV;
+   [REWRITE_TAC[GSYM INT_REM_EQ] THEN INT_ARITH_TAC;
     DISCH_THEN(fun th -> REWRITE_TAC[th])] THEN
   ONCE_REWRITE_TAC[INT_ARITH
    `l:int <= x <=> &2 pow 32 * l <= &2 pow 32 * x`] THEN
-  REWRITE_TAC[MONTRED_MLDSA_LEMMA] THEN
-  REWRITE_TAC[WORD_RULE
-   `word_add (word_mul a b) c = iword(ival a * ival b + ival c)`] THEN
-  ASM_SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH] THEN
-  W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
+  REWRITE_TAC[mldsa_montmul2] THEN
+  REWRITE_TAC[WORD_MUL_IMODULAR; imodular] THEN
+  SIMP_TAC[IVAL_WORD_SX; DIMINDEX_32; DIMINDEX_64; ARITH] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) mainlemma o
    lhand o rator o lhand o snd) THEN
-  REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
   ANTS_TAC THENL
-   [SUBGOAL_THEN
-     `--(&9205375228383854592) <= ival(a:int64) /\
-      ival(a:int64) <= &9205375228392235008`
-    MP_TAC THENL [ASM_INT_ARITH_TAC; ALL_TAC] THEN
-    POP_ASSUM_LIST(K ALL_TAC) THEN STRIP_TAC THEN
-    ASM BOUNDER_TAC[];
+   [SIMP_TAC[GSYM INT_REM_EQ; INT_REM_IVAL_IWORD; DIMINDEX_64; ARITH] THEN
+    ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN
+    SIMP_TAC[GSYM VAL_IVAL_REM; GSYM DIMINDEX_32] THEN
+    SIMP_TAC[WORD_SUBWORD_EQUAL_WORD_ZX_POS0; DIMINDEX_32; DIMINDEX_64;
+             VAL_WORD_ZX_GEN; ARITH_LE; ARITH_LT] THEN
+    ONCE_REWRITE_TAC[ARITH_RULE `32 = MIN 64 32`] THEN
+    REWRITE_TAC[GSYM MOD_MOD_EXP_MIN] THEN
+    REWRITE_TAC[GSYM INT_OF_NUM_REM; GSYM INT_OF_NUM_CLAUSES] THEN
+    REWRITE_TAC[REWRITE_RULE[GSYM INT_REM_EQ; DIMINDEX_64]
+     (INST_TYPE [`:64`,`:N`] VAL_IWORD_CONG)] THEN
+    REWRITE_TAC[INT_REM_REM_POW_MIN] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    CONV_TAC INT_REM_DOWN_CONV THEN
+    REWRITE_TAC[GSYM INT_MUL_ASSOC] THEN
+    ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN
+    SIMP_TAC[GSYM VAL_IVAL_REM; GSYM DIMINDEX_32] THEN
+    REWRITE_TAC[DIMINDEX_32] THEN CONV_TAC INT_REM_DOWN_CONV THEN
+    ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN
+    AP_THM_TAC THEN AP_TERM_TAC THEN AP_TERM_TAC THEN
+    CONV_TAC INT_REDUCE_CONV THEN ASM_REWRITE_TAC[INT_MUL_SYM];
+    DISCH_THEN SUBST1_TAC THEN REWRITE_TAC[GSYM IWORD_INT_SUB]] THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) IVAL_IWORD o
+    lhand o rator o lhand o snd) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[DIMINDEX_64; ARITH] THEN ASM BOUNDER_TAC[];
     DISCH_THEN SUBST1_TAC] THEN
-  ASM_REWRITE_TAC[INTEGER_RULE
-   `(a * p + x:int == y) (mod p) <=> (x == y) (mod p)`] THEN
-  CONJ_TAC THENL
-   [FIRST_X_ASSUM(MATCH_MP_TAC o MATCH_MP (INT_ARITH
-     `l:int <= a ==> x - l <= p ==> x <= p + a`)) THEN
-    TRANS_TAC INT_LE_TRANS `--(&2 pow 31) *  &8380417:int` THEN
-    CONJ_TAC THENL [ASM_INT_ARITH_TAC; BOUNDER_TAC[]];
-    FIRST_X_ASSUM(MATCH_MP_TAC o MATCH_MP (INT_ARITH
-     `a:int <= u ==> x <= p - u ==> x + a <= p`)) THEN
-    TRANS_TAC INT_LE_TRANS `(&2 pow 31 - &1) *  &8380417:int` THEN
-    CONJ_TAC THENL [BOUNDER_TAC[]; ASM_INT_ARITH_TAC]]);;
+  ASM_SIMP_TAC[INTEGER_RULE
+   `(x:int == x') (mod p) ==> (x * a - q * p == a * x') (mod p)`] THEN
+  REWRITE_TAC[GSYM(INT_REDUCE_CONV `(&2:int) pow 32`)] THEN
+  MATCH_MP_TAC(INT_ARITH
+  `(l <= p /\ p <= u) /\ (&4294967295 - c <= q /\ q <= b)
+   ==> &2 pow 32 * (l - b) div &2 pow 32 <= p - q /\
+       p - q <= &2 pow 32 * (u + c) div &2 pow 32`) THEN
+  CONJ_TAC THENL [ALL_TAC; BOUNDER_TAC[]] THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `ival(a:int64)` o
+    MATCH_MP lemma o CONJUNCT2) THEN
+  INT_ARITH_TAC);;
 
 let CONGBOUND_MLDSA_BARRED = prove
  (`!a a' l u.
@@ -788,29 +871,6 @@ let CONGBOUND_MLDSA_BARRED = prove
   DISCH_THEN(fun th -> REWRITE_TAC[GSYM th]) THEN
   ASM_REWRITE_TAC[INTEGER_RULE
    `(x - p * q:int == y) (mod p) <=> (x == y) (mod p)`]);;
-
-let WORD_ADD_MLDSA_MONTMUL = prove
- (`word_add y (mldsa_montmul a b x) =
-   word_sub (word_add
-    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
-    y)
-  (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`,
-  REWRITE_TAC[mldsa_montmul] THEN CONV_TAC WORD_RULE);;
-
-let WORD_SUB_MLDSA_MONTMUL = prove
- (`word_sub y (mldsa_montmul a b x) =
-   word_add (word_sub y
-        (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
-    (word_subword
-    (word_mul (word_sx
-      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
-      (word 8380417:int64))
-    (32,32))`,
-  REWRITE_TAC[mldsa_montmul] THEN CONV_TAC WORD_RULE);;
 
 let CONCL_BOUNDS_RULE =
   CONV_RULE(BINOP2_CONV
@@ -856,6 +916,11 @@ let GEN_CONGBOUND_RULE aboths =
     | Comb(Const("mldsa_barred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_BARRED th1))
+    | Comb(Comb(Comb(Const("mldsa_montmul2",_),a),b),x) ->
+        let ath = rule a and bth = rule b and xth = rule x in
+        let xth' = WEAKEN_INTCONG_RULE (num 8380417) xth in
+        let th1 = MATCH_MP CONGBOUND_MLDSA_MONTMUL2 xth' in
+        CONCL_BOUNDS_RULE(SIDE_ELIM_RULE th1)
     | Comb(Const("word_sx",_),t) ->
         let th0 = rule t in
         let tyin = type_match
