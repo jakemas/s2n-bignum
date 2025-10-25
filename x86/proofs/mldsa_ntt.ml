@@ -10,10 +10,10 @@
 needs "x86/proofs/base.ml";;
 needs "common/mlkem_mldsa.ml";;
 
-(*** print_literal_from_elf "x86/mldsa/mldsa_ntt.o";; 
+(*** print_literal_from_elf "x86/mldsa/mldsa_ntt.o";;
 Machine code is huge so we'll store it in another file for now ***)
 
-needs "x86/proofs/mldsa_ntt_mc.ml";; 
+needs "x86/proofs/mldsa_ntt_mc.ml";;
 
 let mldsa_ntt_tmc = define_trimmed "mldsa_ntt_tmc" mldsa_ntt_mc;;
 let MLDSA_NTT_TMC_EXEC = X86_MK_CORE_EXEC_RULE mldsa_ntt_tmc;;
@@ -103,6 +103,54 @@ let mldsa_complete_qdata = define
    ]`;;
 
 (* ------------------------------------------------------------------------- *)
+(* Montgomery multiplication idiom and some elaborated forms of it.          *)
+(* ------------------------------------------------------------------------- *)
+
+let mldsa_montmul2 = define
+ `mldsa_montmul2 (a:int64) (b:int64) (x:int32) =
+  word_sub
+  (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`;;
+
+let WORD_ADD_MLDSA_MONTMUL2 = prove
+ (`word_add y (mldsa_montmul2 a b x) =
+   word_sub (word_add
+    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32)
+    y)
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
+
+let WORD_SUB_MLDSA_MONTMUL2 = prove
+ (`word_sub y (mldsa_montmul2 a b x) =
+  word_add (word_sub y
+        (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
+    (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
+
+let WORD_ADD_MLDSA_MONTMUL2_ALT = prove
+ (`word_add y (mldsa_montmul2 a b x) =
+   word_sub (word_add y
+    (word_subword (word_mul (word_sx (x:int32)) a:int64) (32,32):int32))
+  (word_subword
+    (word_mul (word_sx
+      (word_subword (word_mul (word_sx (x:int32)) b:int64) (0,32):int32))
+      (word 8380417:int64))
+    (32,32))`,
+  REWRITE_TAC[mldsa_montmul2] THEN CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
 
@@ -121,7 +169,7 @@ g(`!a zetas (zetas_list:int32 list) x pc.
             !i. i < 256
                 ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
                     x i)
-        (\s. read RIP s = word(pc + 0x3049) /\
+        (\s. read RIP s = word(pc + 0x3048) /\
             (!i. i < 256
                       ==> let zi =
                     read(memory :> bytes32(word_add a (word(4 * i)))) s in
@@ -190,37 +238,37 @@ e(FIRST_ASSUM(MP_TAC o check
    (CONV_TAC(LAND_CONV(READ_MEMORY_SPLIT_CONV 3)) THEN
     CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC));;
 
-(*** test a few simulations before things get too slow
-e(X86_STEPS_TAC MLDSA_NTT_TMC_EXEC (1--20));;
-***)
+(*** Do the entire simulation (very slow!) ****)
 
 e(MAP_EVERY (fun n ->
 X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montmul; WORD_ADD_MLDSA_MONTMUL;
-                  WORD_SUB_MLDSA_MONTMUL])
-        (1--71));;
+SIMD_SIMPLIFY_TAC[mldsa_montmul2; WORD_ADD_MLDSA_MONTMUL2;
+                  WORD_ADD_MLDSA_MONTMUL2_ALT; WORD_SUB_MLDSA_MONTMUL2])
+        (1--2337));;
 
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montmul; WORD_ADD_MLDSA_MONTMUL;
-                  WORD_SUB_MLDSA_MONTMUL])
-        (72--2327));;
+e(ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);;
 
+(**** Reverse the restructuring by splitting the 256-bit words up ***)
 
-(*** simulate to the end ***)
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montred; mldsa_montmul])
-        (1--2327));;
+e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+    CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
+    CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
+    check (can (term_match [] `read qqq s:int256 = xxx`) o concl))));;
 
+(*** Split up the cases in the conclusion ***)
 
-ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];;
+e(CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC EXPAND_CASES_CONV THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0]);;
 
-(*** Reverse the restructuring by splitting the 256-bit words back to 32-bit ***)
+(*** Rewrite with assumptions then throw them away ***)
 
-REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
-   CONV_RULE(SIMD_SIMPLIFY_CONV[mldsa_forward_ntt]) o
-   CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
-   check (can (term_match [] `read qqq s2327:int256 = xxx`) o concl)));;
+e(ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s2337");;
 
+(*** Clean up remaining SIMD cruft ***)
 
+e(REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,64) = x`] THEN
+  REWRITE_TAC[WORD_BLAST
+   `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0,32) =
+    h`]);;
