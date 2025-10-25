@@ -305,7 +305,7 @@ let montred = define
      (16,16)`;;
 
 (* ------------------------------------------------------------------------- *)
-(* ML-DSA Montgomery multiplication idiom and some elaborated forms of it.   *)                                                 *)
+(* Analogous ML-DSA idioms.                                                  *)
 (* ------------------------------------------------------------------------- *)
 
 let mldsa_barred = define
