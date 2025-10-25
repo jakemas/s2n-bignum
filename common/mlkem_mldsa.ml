@@ -910,9 +910,6 @@ let GEN_CONGBOUND_RULE aboths =
     | Comb(Const("montred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 3329) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MONTRED th1))
-    | Comb(Const("mldsa_montred",_),t) ->
-        let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
-        CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_MONTRED th1))
     | Comb(Const("mldsa_barred",_),t) ->
         let th1 = WEAKEN_INTCONG_RULE (num 8380417) (rule t) in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE(MATCH_MP CONGBOUND_MLDSA_BARRED th1))
