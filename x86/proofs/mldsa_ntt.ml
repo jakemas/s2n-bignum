@@ -225,3 +225,26 @@ e(REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,64) = x`] THEN
   REWRITE_TAC[WORD_BLAST
    `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0,32) =
     h`]);;
+
+(* Take the input bounds assumption and expands all the cases *)
+(* Clear all assumptions except the one we just processed *)
+e(FIRST_X_ASSUM(MP_TAC o CONV_RULE EXPAND_CASES_CONV));;
+e(POP_ASSUM_LIST(K ALL_TAC));;
+e(DISCH_THEN(fun aboth ->
+  W(MP_TAC o GEN_CONGBOUND_RULE (CONJUNCTS aboth) o
+    rand o lhand o rator o lhand o snd)));;
+
+(* Split congruence and bounds *)
+e(MATCH_MP_TAC MONO_AND THEN CONJ_TAC);;
+
+(* Mathematical correctness *)
+e(MATCH_MP_TAC(REWRITE_RULE[IMP_CONJ_ALT] INT_CONG_TRANS));;
+e(CONV_TAC(ONCE_DEPTH_CONV MLDSA_FORWARD_NTT_CONV));;
+e(REWRITE_TAC[GSYM INT_REM_EQ; o_THM]);;
+e(CONV_TAC INT_REM_DOWN_CONV);;
+e(REWRITE_TAC[INT_REM_EQ]);;
+e(REAL_INTEGER_TAC);;
+
+(* Bounds verification *)
+e(MATCH_MP_TAC(INT_ARITH `l':int <= l /\ u <= u' ==> l <= x /\ x <= u ==> l' <= x /\ x <= u'`));;
+e(CONV_TAC INT_REDUCE_CONV);;
