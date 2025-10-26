@@ -101,9 +101,9 @@ let mldsa_inverse_ntt = define
 
 let mldsa_forward_ntt = define
  `mldsa_forward_ntt f k =
-    isum (0..127) (\j. f(2 * j + k MOD 2) *
-                       &1753 pow ((2 * bitreverse8 (k DIV 2) + 1) * j))
+    isum (0..255) (\j. f j * &1753 pow ((2 * bitreverse8 k + 1) * j))
     rem &8380417`;;
+
 
 (* ------------------------------------------------------------------------- *)
 (* Show how these relate to the "pure" ones.                                 *)
@@ -127,11 +127,9 @@ let INVERSE_NTT = prove
   ONCE_REWRITE_TAC[GSYM INT_MUL_REM] THEN CONV_TAC INT_REDUCE_CONV);;
 
 let MLDSA_FORWARD_NTT = prove
- (`mldsa_forward_ntt = reorder mldsa_bitreverse_pairs o pure_forward_ntt_mldsa`,
-  REWRITE_TAC[FUN_EQ_THM; o_DEF; mldsa_bitreverse_pairs; reorder] THEN
-  REWRITE_TAC[mldsa_forward_ntt; pure_forward_ntt_mldsa] THEN
-  REWRITE_TAC[ARITH_RULE `(2 * x + i MOD 2) DIV 2 = x`] THEN
-  REWRITE_TAC[MOD_MULT_ADD; MOD_MOD_REFL]);;
+ (`mldsa_forward_ntt f k = 
+   isum (0..255) (\j. f j * &1753 pow ((2 * bitreverse8 k + 1) * j)) rem &8380417`,
+  REWRITE_TAC[mldsa_forward_ntt]);;
 
 let MLDSA_INVERSE_NTT = prove
  (`mldsa_inverse_ntt = tomont_8380417 o pure_inverse_ntt_mldsa o reorder mldsa_bitreverse_pairs`,
@@ -212,9 +210,9 @@ let BITREVERSE8_CLAUSES = end_itlist CONJ (map
 
 let MLDSA_FORWARD_NTT_ALT = prove
  (`mldsa_forward_ntt f k =
-   isum (0..127)
-        (\j. f(2 * j + k MOD 2) *
-             (&1753 pow ((2 * bitreverse8 (k DIV 2) + 1) * j)) rem &8380417)
+   isum (0..255)
+        (\j. f j *
+             (&1753 pow ((2 * bitreverse8 k + 1) * j)) rem &8380417)
     rem &8380417`,
   REWRITE_TAC[mldsa_forward_ntt] THEN MATCH_MP_TAC
    (REWRITE_RULE[] (ISPEC
