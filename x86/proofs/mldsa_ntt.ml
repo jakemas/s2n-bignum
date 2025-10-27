@@ -102,7 +102,6 @@ let mldsa_complete_qdata = define
    -- &1799107; &269760; &472078; &1910376; -- &3833893; -- &2286327; -- &3545687; -- &1362209; &1976782
    ]`;;
 
-
 (* ------------------------------------------------------------------------- *)
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
@@ -118,7 +117,7 @@ g(`!a zetas (zetas_list:int32 list) x pc.
             read RIP s = word pc /\
             C_ARGUMENTS [a; zetas] s /\
             wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
-              (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
+            (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
             !i. i < 256
                 ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
                     x i)
@@ -127,7 +126,7 @@ g(`!a zetas (zetas_list:int32 list) x pc.
                       ==> let zi =
                     read(memory :> bytes32(word_add a (word(4 * i)))) s in
                     (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
-                    abs(ival zi) <= &6283008))
+                    abs(ival zi) <= &42035261))
         (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
         MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
         MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
@@ -139,6 +138,14 @@ e(MAP_EVERY X_GEN_TAC
   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; C_ARGUMENTS;
               NONOVERLAPPING_CLAUSES; ALL] THEN
   DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC));;
+
+(*** Pull out the bounds assumption since we don't need to expand it
+ *** until much later, and it keeps things a bit smaller and simpler
+ ***)
+
+e(GLOBALIZE_PRECONDITION_TAC);;
+
+(*** But do expand all the input[i] = x i assumptions ***)
 
 e(CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
   CONV_TAC NUM_REDUCE_CONV THEN
@@ -208,43 +215,31 @@ e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
     CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
     check (can (term_match [] `read qqq s:int256 = xxx`) o concl))));;
 
-(*** Split up the cases in the conclusion ***)
+(*** Expand the cases in the conclusion (leave the let-terms for now)***)
 
-e(CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-  CONV_TAC EXPAND_CASES_CONV THEN
+e(CONV_TAC EXPAND_CASES_CONV THEN
   CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV) THEN
-  REWRITE_TAC[WORD_ADD_0]);;
+  REWRITE_TAC[INT_ABS_BOUNDS; WORD_ADD_0]);;
 
 (*** Rewrite with assumptions then throw them away ***)
 
 e(ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s2337");;
 
-(*** Clean up remaining SIMD cruft ***)
+(*** Remove one other non-arithmetical oddity ***)
 
 e(REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,64) = x`] THEN
   REWRITE_TAC[WORD_BLAST
    `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0,32) =
     h`]);;
 
-(* Take the input bounds assumption and expands all the cases *)
-(* Clear all assumptions except the one we just processed *)
-e(FIRST_X_ASSUM(MP_TAC o CONV_RULE EXPAND_CASES_CONV));;
-e(POP_ASSUM_LIST(K ALL_TAC));;
-e(DISCH_THEN(fun aboth ->
-  W(MP_TAC o GEN_CONGBOUND_RULE (CONJUNCTS aboth) o
-    rand o lhand o rator o lhand o snd)));;
+(*** Try splitting into 256 subgoals and applying CONGBOUND ***)
 
-(* Split congruence and bounds *)
-e(MATCH_MP_TAC MONO_AND THEN CONJ_TAC);;
-
-(* Mathematical correctness *)
-e(MATCH_MP_TAC(REWRITE_RULE[IMP_CONJ_ALT] INT_CONG_TRANS));;
-e(CONV_TAC(ONCE_DEPTH_CONV MLDSA_FORWARD_NTT_CONV));;
-e(REWRITE_TAC[GSYM INT_REM_EQ; o_THM]);;
-e(CONV_TAC INT_REM_DOWN_CONV);;
-e(REWRITE_TAC[INT_REM_EQ]);;
-e(REAL_INTEGER_TAC);;
-
-(* Bounds verification *)
-e(MATCH_MP_TAC(INT_ARITH `l':int <= l /\ u <= u' ==> l <= x /\ x <= u ==> l' <= x /\ x <= u'`));;
-e(CONV_TAC INT_REDUCE_CONV);;
+e(CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[GSYM CONJ_ASSOC] THEN
+  REPEAT(GEN_REWRITE_TAC I
+   [TAUT `p /\ q /\ r /\ s <=> (p /\ q /\ r) /\ s`] THEN CONJ_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o CONV_RULE EXPAND_CASES_CONV) THEN
+  POP_ASSUM_LIST(K ALL_TAC) THEN
+  DISCH_THEN(fun aboth ->
+    W(MP_TAC o GEN_CONGBOUND_RULE (CONJUNCTS aboth) o
+      rand o lhand o rator o lhand o snd)));;

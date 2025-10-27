@@ -58,6 +58,14 @@ let reorder = define
  `reorder p (a:num->int) = \i. a(p i)`;;
 
 (* ------------------------------------------------------------------------- *)
+(* AVX2-optimized ordering for ML-DSA NTT (swaps bit fields then reverses)   *)
+(* ------------------------------------------------------------------------- *)
+
+let avx2_ntt_order = define
+ `avx2_ntt_order i = 
+    bitreverse8(64 * (i DIV 64) + ((i MOD 64) DIV 8) + 8 * (i MOD 8))`;;
+
+(* ------------------------------------------------------------------------- *)
 (* Conversion of each element of an array to Montgomery form with B = 2^16.  *)
 (* ------------------------------------------------------------------------- *)
 
@@ -101,9 +109,8 @@ let mldsa_inverse_ntt = define
 
 let mldsa_forward_ntt = define
  `mldsa_forward_ntt f k =
-    isum (0..255) (\j. f j * &1753 pow ((2 * bitreverse8 k + 1) * j))
+    isum (0..255) (\j. f j * &1753 pow ((2 * avx2_ntt_order k + 1) * j))
     rem &8380417`;;
-
 
 (* ------------------------------------------------------------------------- *)
 (* Show how these relate to the "pure" ones.                                 *)
@@ -128,7 +135,7 @@ let INVERSE_NTT = prove
 
 let MLDSA_FORWARD_NTT = prove
  (`mldsa_forward_ntt f k = 
-   isum (0..255) (\j. f j * &1753 pow ((2 * bitreverse8 k + 1) * j)) rem &8380417`,
+   isum (0..255) (\j. f j * &1753 pow ((2 * avx2_ntt_order k + 1) * j)) rem &8380417`,
   REWRITE_TAC[mldsa_forward_ntt]);;
 
 let MLDSA_INVERSE_NTT = prove
@@ -212,7 +219,7 @@ let MLDSA_FORWARD_NTT_ALT = prove
  (`mldsa_forward_ntt f k =
    isum (0..255)
         (\j. f j *
-             (&1753 pow ((2 * bitreverse8 k + 1) * j)) rem &8380417)
+             (&1753 pow ((2 * avx2_ntt_order k + 1) * j)) rem &8380417)
     rem &8380417`,
   REWRITE_TAC[mldsa_forward_ntt] THEN MATCH_MP_TAC
    (REWRITE_RULE[] (ISPEC
