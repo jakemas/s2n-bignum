@@ -106,82 +106,83 @@ let mldsa_complete_qdata = define
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
 
-g(`!a zetas (zetas_list:int32 list) x pc.
-  aligned 32 a /\
-  aligned 32 zetas /\
-  nonoverlapping (word pc,0x3049) (a, 1024) /\
-  nonoverlapping (word pc,0x3049) (zetas, 2496) /\
-  nonoverlapping (a, 1024) (zetas, 2496)
-  ==> ensures x86
-        (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
-            read RIP s = word pc /\
-            C_ARGUMENTS [a; zetas] s /\
-            wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
-            (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
-            !i. i < 256
-                ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
-                    x i)
-        (\s. read RIP s = word(pc + 0x3048) /\
-            (!i. i < 256
-                      ==> let zi =
-                    read(memory :> bytes32(word_add a (word(4 * i)))) s in
-                    (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
-                    abs(ival zi) <= &42035261))
-        (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
-        MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
-        MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
-        MAYCHANGE [memory :> bytes(a,1024)])`);;
+let MLDSA_NTT_CORRECT = prove
+  (`!a zetas (zetas_list:int32 list) x pc.
+    aligned 32 a /\
+    aligned 32 zetas /\
+    nonoverlapping (word pc,0x3049) (a, 1024) /\
+    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (a, 1024) (zetas, 2496)
+    ==> ensures x86
+          (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
+              read RIP s = word pc /\
+              C_ARGUMENTS [a; zetas] s /\
+              wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
+              (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
+              !i. i < 256
+                  ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
+                      x i)
+          (\s. read RIP s = word(pc + 0x3048) /\
+              (!i. i < 256
+                        ==> let zi =
+                      read(memory :> bytes32(word_add a (word(4 * i)))) s in
+                      (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
+                      abs(ival zi) <= &42035261))
+          (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+          MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(a,1024)])`,
 
 (*** Setup - introduce variables and break down assumptions ***)
-e(MAP_EVERY X_GEN_TAC
+  MAP_EVERY X_GEN_TAC
    [`a:int64`; `zetas:int64`; `zetas_list:int32 list`; `x:num->int32`; `pc:num`] THEN
   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; C_ARGUMENTS;
               NONOVERLAPPING_CLAUSES; ALL] THEN
-  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC));;
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
 
 (*** Pull out the bounds assumption since we don't need to expand it
  *** until much later, and it keeps things a bit smaller and simpler
  ***)
 
-e(GLOBALIZE_PRECONDITION_TAC);;
+  GLOBALIZE_PRECONDITION_TAC THEN
 
 (*** But do expand all the input[i] = x i assumptions ***)
 
-e(CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
+  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
   CONV_TAC NUM_REDUCE_CONV THEN
-  REPEAT STRIP_TAC);;
+  REPEAT STRIP_TAC THEN
 
-e(REWRITE_TAC [SOME_FLAGS; fst MLDSA_NTT_TMC_EXEC]);;
+  REWRITE_TAC [SOME_FLAGS; fst MLDSA_NTT_TMC_EXEC] THEN
 
-e(GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
+  GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
   GHOST_INTRO_TAC `init_ymm1:int256` `read YMM1` THEN
-  GHOST_INTRO_TAC `init_ymm2:int256` `read YMM2`);;
+  GHOST_INTRO_TAC `init_ymm2:int256` `read YMM2` THEN
 
-e(ENSURES_INIT_TAC "s0" );;
+  ENSURES_INIT_TAC "s0" THEN
 
 (*** First restructure all the loads from the a pointer ***)
 
-e(MP_TAC(end_itlist CONJ (map (fun n ->
+  MP_TAC(end_itlist CONJ (map (fun n ->
     READ_MEMORY_MERGE_CONV 3 (subst[mk_small_numeral(32*n),`n:num`]
       `read (memory :> bytes256(word_add a (word n))) s0`)) (0--31))) THEN
   ASM_REWRITE_TAC[WORD_ADD_0] THEN
   DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 a) s = x`] THEN
-  CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC);;
+  CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC THEN
 
 (*** Expand the qdata table ***)
 
-e(FIRST_X_ASSUM(MP_TAC o CONV_RULE (LAND_CONV WORDLIST_FROM_MEMORY_CONV)) THEN
+  FIRST_X_ASSUM(MP_TAC o CONV_RULE (LAND_CONV WORDLIST_FROM_MEMORY_CONV)) THEN
   REWRITE_TAC[mldsa_complete_qdata; MAP; CONS_11] THEN
-  STRIP_TAC);;
+  STRIP_TAC THEN
 
 (*** Restructure zeta entries, as before but with WORD_REDUCE_CONV to simplify ***)
 
-e(MP_TAC(end_itlist CONJ (map (fun n ->
+  MP_TAC(end_itlist CONJ (map (fun n ->
     READ_MEMORY_MERGE_CONV 3 (subst[mk_small_numeral(32*n),`n:num`]
       `read (memory :> bytes256(word_add zetas (word n))) s0`)) (0--77))) THEN
   ASM_REWRITE_TAC[WORD_ADD_0] THEN
   DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 a) s = x`] THEN
-  CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC);;
+  CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC THEN
 
 (*** We've thrown away some of the 32-bit words that are used in
  *** broadcast instructions. We could have written a more refined
@@ -190,51 +191,49 @@ e(MP_TAC(end_itlist CONJ (map (fun n ->
  *** assumptions we want to break apart, then split them up.
  ***)
 
-e(FIRST_ASSUM(MP_TAC o check
+  FIRST_ASSUM(MP_TAC o check
    (can (term_match [] `read (memory :> bytes256 (word_add zetas (word 128))) s0 = xxx`) o concl)) THEN
   FIRST_ASSUM(MP_TAC o check
    (can (term_match [] `read (memory :> bytes256 (word_add zetas (word 1312))) s0 = xxx`) o concl)) THEN
   REPLICATE_TAC 2
    (CONV_TAC(LAND_CONV(READ_MEMORY_SPLIT_CONV 3)) THEN
-    CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC));;
+    CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC) THEN
 
 (*** Do the entire simulation (very slow!) ****)
 
-e(MAP_EVERY (fun n ->
-X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-SIMD_SIMPLIFY_TAC[mldsa_montmul2; WORD_ADD_MLDSA_MONTMUL2;
-                  WORD_ADD_MLDSA_MONTMUL2_ALT; WORD_SUB_MLDSA_MONTMUL2])
-        (1--2337));;
-
-e(ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);;
+  MAP_EVERY (fun n -> X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
+                      SIMD_SIMPLIFY_TAC[mldsa_montmul2; WORD_ADD_MLDSA_MONTMUL2;
+                      WORD_ADD_MLDSA_MONTMUL2_ALT; WORD_SUB_MLDSA_MONTMUL2])
+        (1--2337) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
 
 (**** Reverse the restructuring by splitting the 256-bit words up ***)
 
-e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+  REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
     CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
     CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
-    check (can (term_match [] `read qqq s:int256 = xxx`) o concl))));;
+    check (can (term_match [] `read qqq s:int256 = xxx`) o concl))) THEN
 
 (*** Expand the cases in the conclusion (leave the let-terms for now)***)
 
-e(CONV_TAC EXPAND_CASES_CONV THEN
+  CONV_TAC EXPAND_CASES_CONV THEN
   CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV) THEN
-  REWRITE_TAC[INT_ABS_BOUNDS; WORD_ADD_0]);;
+  REWRITE_TAC[INT_ABS_BOUNDS; WORD_ADD_0] THEN
 
 (*** Rewrite with assumptions then throw them away ***)
 
-e(ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s2337");;
+  ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s2337" THEN
 
 (*** Remove one other non-arithmetical oddity ***)
 
-e(REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,64) = x`] THEN
+  REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0,64) = x`] THEN
   REWRITE_TAC[WORD_BLAST
    `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0,32) =
-    h`]);;
+    h`] THEN
 
 (*** Try splitting into 256 subgoals and applying CONGBOUND ***)
 
-e(CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC[GSYM CONJ_ASSOC] THEN
   REPEAT(GEN_REWRITE_TAC I
    [TAUT `p /\ q /\ r /\ s <=> (p /\ q /\ r) /\ s`] THEN CONJ_TAC) THEN
