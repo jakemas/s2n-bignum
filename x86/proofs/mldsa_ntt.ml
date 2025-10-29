@@ -255,3 +255,73 @@ let MLDSA_NTT_CORRECT = prove
      `l':int <= l /\ u <= u'
       ==> l <= x /\ x <= u ==> l' <= x /\ x <= u'`) THEN
     CONV_TAC INT_REDUCE_CONV]));;
+
+(* ------------------------------------------------------------------------- *)
+(* Subroutine correctness theorems.                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let MLDSA_NTT_NOIBT_SUBROUTINE_CORRECT = prove
+ (`!a zetas (zetas_list:int32 list) x pc stackpointer returnaddress.
+    aligned 32 a /\
+    aligned 32 zetas /\
+    nonoverlapping (word pc,0x3049) (a, 1024) /\
+    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (a, 1024) (zetas, 2496) /\
+    nonoverlapping (stackpointer,8) (a, 1024) /\
+    nonoverlapping (stackpointer,8) (zetas, 2496)
+    ==> ensures x86
+          (\s. bytes_loaded s (word pc) mldsa_ntt_tmc /\
+              read RIP s = word pc /\
+              read RSP s = stackpointer /\
+              read (memory :> bytes64 stackpointer) s = returnaddress /\
+              C_ARGUMENTS [a; zetas] s /\
+              wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
+              (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
+              !i. i < 256
+                  ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
+                      x i)
+          (\s. read RIP s = returnaddress /\
+              read RSP s = word_add stackpointer (word 8) /\
+              (!i. i < 256
+                        ==> let zi =
+                      read(memory :> bytes32(word_add a (word(4 * i)))) s in
+                      (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
+                      abs(ival zi) <= &42035261))
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+          MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(a,1024)])`,
+  X86_PROMOTE_RETURN_NOSTACK_TAC mldsa_ntt_tmc MLDSA_NTT_CORRECT);;
+
+let MLDSA_NTT_SUBROUTINE_CORRECT = prove
+ (`!a zetas (zetas_list:int32 list) x pc stackpointer returnaddress.
+    aligned 32 a /\
+    aligned 32 zetas /\
+    nonoverlapping (word pc,0x3049) (a, 1024) /\
+    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (a, 1024) (zetas, 2496) /\
+    nonoverlapping (stackpointer,8) (a, 1024) /\
+    nonoverlapping (stackpointer,8) (zetas, 2496)
+    ==> ensures x86
+          (\s. bytes_loaded s (word pc) mldsa_ntt_mc /\
+              read RIP s = word pc /\
+              read RSP s = stackpointer /\
+              read (memory :> bytes64 stackpointer) s = returnaddress /\
+              C_ARGUMENTS [a; zetas] s /\
+              wordlist_from_memory(zetas,624) s = MAP (iword: int -> 32 word) mldsa_complete_qdata /\
+              (!i. i < 256 ==> abs(ival(x i)) <= &8380416) /\
+              !i. i < 256
+                  ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
+                      x i)
+          (\s. read RIP s = returnaddress /\
+              read RSP s = word_add stackpointer (word 8) /\
+              (!i. i < 256
+                        ==> let zi =
+                      read(memory :> bytes32(word_add a (word(4 * i)))) s in
+                      (ival zi == mldsa_forward_ntt (ival o x) i) (mod &8380417) /\
+                      abs(ival zi) <= &42035261))
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+          MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(a,1024)])`,
+  MATCH_ACCEPT_TAC(ADD_IBT_RULE MLDSA_NTT_NOIBT_SUBROUTINE_CORRECT));;
