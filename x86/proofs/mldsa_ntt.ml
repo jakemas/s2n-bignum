@@ -11,7 +11,8 @@ needs "x86/proofs/base.ml";;
 needs "common/mlkem_mldsa.ml";;
 
 (*** print_literal_from_elf "x86/mldsa/mldsa_ntt.o";;
-Machine code is huge so we'll store it in another file for now ***)
+ *** Machine code is huge so we'll store it in another file for now 
+ ***)
 
 needs "x86/proofs/mldsa_ntt_mc.ml";;
 
@@ -22,6 +23,13 @@ let MLDSA_NTT_TMC_EXEC = X86_MK_CORE_EXEC_RULE mldsa_ntt_tmc;;
 (* Data tables that are assumed in the precondition.                         *)
 (* ------------------------------------------------------------------------- *)
 
+(*** ML-DSA NTT zeta array: 624 elements total
+ *** - [0-31]: ML-DSA constants (q=8380417, qinv=58728449, etc.)  
+ *** - [32-39]: Initial twiddle factors
+ *** - [40-367]: 4x replicated twiddles for SIMD (82 unique values × 4 copies)
+ *** - [368-623]: Final twiddle section with 2x replication (128 unique values × 2 copies)
+ *** Follows bit-reversed indexing per FIPS 204 Appendix B with AVX2 optimization 
+ ***)
 let mldsa_complete_qdata = define
  `mldsa_complete_qdata:int list =
    [
@@ -100,8 +108,8 @@ let mldsa_complete_qdata = define
    &819034; -- &522500; &3207046; -- &3595838; &4108315; &203044; &1265009; &1595974; -- &3548272; -- &1050970;
    -- &1430225; -- &1962642; -- &1374803; &3406031; -- &1846953; -- &3776993; -- &164721; -- &1207385; &3014001;
    -- &1799107; &269760; &472078; &1910376; -- &3833893; -- &2286327; -- &3545687; -- &1362209; &1976782
-   ]`;;
-
+   ]`;; 
+   
 (* ------------------------------------------------------------------------- *)
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
@@ -202,8 +210,8 @@ let MLDSA_NTT_CORRECT = prove
 (*** Do the entire simulation (very slow!) ****)
 
   MAP_EVERY (fun n -> X86_STEPS_TAC MLDSA_NTT_TMC_EXEC [n] THEN
-                      SIMD_SIMPLIFY_TAC[mldsa_montmul2; WORD_ADD_MLDSA_MONTMUL2;
-                      WORD_ADD_MLDSA_MONTMUL2_ALT; WORD_SUB_MLDSA_MONTMUL2])
+                      SIMD_SIMPLIFY_TAC[mldsa_montmul; WORD_ADD_MLDSA_MONTMUL;
+                      WORD_ADD_MLDSA_MONTMUL_ALT; WORD_SUB_MLDSA_MONTMUL])
         (1--2337) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
 
