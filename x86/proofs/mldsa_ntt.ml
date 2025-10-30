@@ -114,12 +114,19 @@ let mldsa_complete_qdata = define
 (* Correctness proof.                                                        *)
 (* ------------------------------------------------------------------------- *)
 
+(*** 
+ *** Currently, there is a discrepency when compiling the asmb on x86 machines vs Arm 
+ *** As such, the produced mldsa_ntt_tmc has different lengths. When on ARM 0x3049
+ *** when on x86 0x3079.
+ ***)
+
+
 let MLDSA_NTT_CORRECT = prove
   (`!a zetas (zetas_list:int32 list) x pc.
     aligned 32 a /\
     aligned 32 zetas /\
-    nonoverlapping (word pc,0x3049) (a, 1024) /\
-    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (word pc,0x3079) (a, 1024) /\
+    nonoverlapping (word pc,0x3079) (zetas, 2496) /\
     nonoverlapping (a, 1024) (zetas, 2496)
     ==> ensures x86
           (\s. bytes_loaded s (word pc) (BUTLAST mldsa_ntt_tmc) /\
@@ -130,7 +137,7 @@ let MLDSA_NTT_CORRECT = prove
               !i. i < 256
                   ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
                       x i)
-          (\s. read RIP s = word(pc + 0x3048) /\
+          (\s. read RIP s = word(pc + 0x3078) /\
               (!i. i < 256
                         ==> let zi =
                       read(memory :> bytes32(word_add a (word(4 * i)))) s in
@@ -272,8 +279,8 @@ let MLDSA_NTT_NOIBT_SUBROUTINE_CORRECT = prove
  (`!a zetas (zetas_list:int32 list) x pc stackpointer returnaddress.
     aligned 32 a /\
     aligned 32 zetas /\
-    nonoverlapping (word pc,0x3049) (a, 1024) /\
-    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (word pc,0x3079) (a, 1024) /\
+    nonoverlapping (word pc,0x3079) (zetas, 2496) /\
     nonoverlapping (a, 1024) (zetas, 2496) /\
     nonoverlapping (stackpointer,8) (a, 1024) /\
     nonoverlapping (stackpointer,8) (zetas, 2496)
@@ -305,8 +312,8 @@ let MLDSA_NTT_SUBROUTINE_CORRECT = prove
  (`!a zetas (zetas_list:int32 list) x pc stackpointer returnaddress.
     aligned 32 a /\
     aligned 32 zetas /\
-    nonoverlapping (word pc,0x3049) (a, 1024) /\
-    nonoverlapping (word pc,0x3049) (zetas, 2496) /\
+    nonoverlapping (word pc,0x3079) (a, 1024) /\
+    nonoverlapping (word pc,0x3079) (zetas, 2496) /\
     nonoverlapping (a, 1024) (zetas, 2496) /\
     nonoverlapping (stackpointer,8) (a, 1024) /\
     nonoverlapping (stackpointer,8) (zetas, 2496)
