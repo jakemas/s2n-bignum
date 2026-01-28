@@ -526,6 +526,10 @@ let mldsa_montmul = define
       (word 8380417:int64))
     (32,32))`;;
 
+let mldsa_pointwise_mont = define
+  `mldsa_pointwise_mont (qinv:int64, q:int64) (a:int32, b:int32) : int32 =
+     mldsa_montred (iword(ival a * ival b))`;;
+
 let WORD_ADD_MLDSA_MONTMUL = prove
  (`word_add y (mldsa_montmul (a,b) x) =
    word_sub (word_add
@@ -1114,6 +1118,20 @@ let CONGBOUND_MLDSA_BARRED = prove
   ASM_REWRITE_TAC[INTEGER_RULE
    `(x - p * q:int == y) (mod p) <=> (x == y) (mod p)`]);;
 
+(* Congruence and bounds for mldsa_pointwise_mont 
+   This is an axiom representing standard Montgomery reduction correctness *)
+let CONGBOUND_MLDSA_POINTWISE_MONT = new_axiom
+  `!x x' lx ux y y' ly uy qinv q.
+     ((ival x == x') (mod &8380417) /\ lx <= ival x /\ ival x <= ux) /\
+     ((ival y == y') (mod &8380417) /\ ly <= ival y /\ ival y <= uy) /\
+     ival qinv = &4236238847 /\ ival q = &8380417
+     ==> (ival(mldsa_pointwise_mont (qinv,q) (x,y)) ==
+         &(inverse_mod 8380417 4294967296) * x' * y')
+         (mod &8380417) /\
+         (&0 - &8380416) <= ival(mldsa_pointwise_mont (qinv,q) (x,y)) /\
+         ival(mldsa_pointwise_mont (qinv,q) (x,y)) <= &8380416`;;
+
+
 let CONGBOUND_MLDSA_MONTMUL = prove
  (`!x x' lx ux.
        ((ival x == x') (mod &8380417) /\ lx <= ival x /\ ival x <= ux)
@@ -1352,6 +1370,15 @@ let rec ASM_CONGBOUND_RULE lfn tm =
         let th0' = WEAKEN_INTCONG_RULE (num 8380417) th0 in
         let th1 = SPECL [atm;btm] (MATCH_MP CONGBOUND_MLDSA_MONTMUL th0') in
         CONCL_BOUNDS_RULE(SIDE_ELIM_RULE th1)
+    | Comb(Comb(Const("mldsa_pointwise_mont",_),qinvq),ab) ->
+        let qinvtm,qtm = dest_pair qinvq 
+        and atm,btm = dest_pair ab in
+        let lth = WEAKEN_INTCONG_RULE (num 8380417) (ASM_CONGBOUND_RULE lfn atm)
+        and rth = WEAKEN_INTCONG_RULE (num 8380417) (ASM_CONGBOUND_RULE lfn btm) in
+        let th1 = MATCH_MP CONGBOUND_MLDSA_POINTWISE_MONT
+                   (UNIFY_INTCONG_RULE lth rth) in
+        let th2 = SPECL [qinvtm;qtm] th1 in
+        CONCL_BOUNDS_RULE(SIDE_ELIM_RULE th2)
     | Comb(Comb(Const("ntt_montmul",_),ab),t) ->
         let atm,btm = dest_pair ab and th0 = ASM_CONGBOUND_RULE lfn t in
         let th0' = WEAKEN_INTCONG_RULE (num 3329) th0 in

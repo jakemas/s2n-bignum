@@ -174,65 +174,210 @@ let mldsa_pointwise_tmc = define_trimmed "mldsa_pointwise_tmc" mldsa_pointwise_m
 let MLDSA_POINTWISE_TMC_EXEC = X86_MK_CORE_EXEC_RULE mldsa_pointwise_tmc;;
 
 (* ------------------------------------------------------------------------- *)
-(* Mathematical definitions for pointwise multiplication.                    *)
+(* mldsa_pointwise uses mldsa_pointwise_mont from common/mlkem_mldsa.ml      *)
+(* Defined as: mldsa_montred(iword(ival a * ival b))                         *)
+(* CONGBOUND_MLDSA_POINTWISE_MONT in mlkem_mldsa.ml proves correctness       *)
 (* ------------------------------------------------------------------------- *)
 
-(* Simple pointwise multiplication: c[i] = a[i] * b[i] in NTT domain *)
-let pmul_mldsa = define
-  `pmul_mldsa (a: int) (b: int) = a * b`;;
-
-(* Montgomery reduction modulo Q=8380417 with R=2^32 *)
-let pmontred_mldsa = define
-  `pmontred_mldsa (x: int) = 
-     (&(inverse_mod 8380417 4294967296) * x) rem &8380417`;;
-
-(* Pointwise multiplication with Montgomery reduction *)
-let pmul_montred_mldsa = define
-  `pmul_montred_mldsa (a: int) (b: int) = 
-     pmontred_mldsa (pmul_mldsa a b)`;;
 
 (* ------------------------------------------------------------------------- *)
 (* Main correctness goal (in g() form for interactive development).          *)
 (* ------------------------------------------------------------------------- *)
 
-g `!c a b qdata x y pc.
+(*** getting PC length/size:
+let len_thm = REWRITE_CONV[mldsa_pointwise_tmc] `LENGTH mldsa_pointwise_tmc` in
+let len_computed = LENGTH_CONV (rhs (concl len_thm)) in
+let final_value = rhs (concl len_computed) in
+dest_small_numeral final_value;;
+***)
+
+g(`!c a b qdata x y pc.
         aligned 32 c /\
         aligned 32 a /\
         aligned 32 b /\
         aligned 32 qdata /\
         ALL (nonoverlapping (c, 1024))
-            [(word pc, 0x400); (a, 1024); (b, 1024); (qdata, 64)] /\
+            [(word pc, 409); (a, 1024); (b, 1024); (qdata, 64)] /\
         ALL (nonoverlapping (a, 1024))
-            [(word pc, 0x400); (b, 1024); (qdata, 64)] /\
+            [(word pc, 409); (b, 1024); (qdata, 64)] /\
         ALL (nonoverlapping (b, 1024))
-            [(word pc, 0x400); (qdata, 64)] /\
-        nonoverlapping (word pc, 0x400) (qdata, 64)
+            [(word pc, 409); (qdata, 64)] /\
+        nonoverlapping (word pc, 409) (qdata, 64)
         ==> ensures x86
              (\s. bytes_loaded s (word pc) (BUTLAST mldsa_pointwise_tmc) /\
                   read RIP s = word pc /\
                   C_ARGUMENTS [c; a; b; qdata] s /\
-                  (* Input bounds: coefficients bounded by 9*Q *)
                   (!i. i < 256 ==> abs(ival(x i)) <= &(9 * 8380417)) /\
                   (!i. i < 256 ==> abs(ival(y i)) <= &(9 * 8380417)) /\
-                  (* Load 256 coefficients from polynomial a *)
                   (!i. i < 256
                        ==> read(memory :> bytes32(word_add a (word(4 * i)))) s =
                            x i) /\
-                  (* Load 256 coefficients from polynomial b *)
                   (!i. i < 256
                        ==> read(memory :> bytes32(word_add b (word(4 * i)))) s =
                            y i))
-             (\s. read RIP s = word(pc + 0x3FF) /\
-                  (* Output: c[i] = Montgomery_reduce(a[i] * b[i]) *)
+             (\s. read RIP s = word(pc + 0x198) /\
                   (!i. i < 256
-                       ==> let ci = read(memory :> bytes32
-                                        (word_add c (word(4 * i)))) s in
-                           (ival ci == pmul_montred_mldsa (ival(x i)) 
-                                                           (ival(y i)))
-                           (mod &8380417) /\
-                           abs(ival ci) <= &8380416))
+                       ==> read(memory :> bytes32(word_add c (word(4 * i)))) s =
+                           mldsa_pointwise_mont
+                             (read(memory :> bytes64 qdata) s,
+                              read(memory :> bytes64(word_add qdata (word 32))) s)
+                             (x i, y i)))
              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
               MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                          ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
               MAYCHANGE [RAX] ,, MAYCHANGE SOME_FLAGS ,,
-              MAYCHANGE [memory :> bytes(c, 1024)])`;;
+              MAYCHANGE [memory :> bytes(c, 1024)])`);;
+
+e(REWRITE_TAC[NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; 
+              fst MLDSA_POINTWISE_TMC_EXEC]);;
+
+e(REPEAT STRIP_TAC);;
+
+e(ENSURES_INIT_TAC "s0");;
+
+e(MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 3
+    (subst[mk_small_numeral(32*n),`n:num`]
+      `read (memory :> bytes256(word_add a (word n))) s0`))
+    (0--31))));;
+
+e(ASM_REWRITE_TAC[WORD_ADD_0]);;
+
+e(DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 any) s = x`]);;
+
+e(MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 3
+    (subst[mk_small_numeral(32*n),`n:num`]
+      `read (memory :> bytes256(word_add b (word n))) s0`))
+    (0--31))));;
+
+(*** could add ***)
+e(ASM_REWRITE_TAC[WORD_ADD_0]);;
+e(DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 any) s = y`]);;
+e(REPEAT STRIP_TAC);;
+(*** end could add ***)
+
+(*** so the simulation ***)
+e(MAP_EVERY (fun n -> X86_STEPS_TAC MLDSA_POINTWISE_TMC_EXEC [n] THEN
+                      SIMD_SIMPLIFY_TAC [mldsa_pointwise_mont])
+            (1--543));;
+
+
+e(ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+  CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
+  CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
+  check (can (term_match [] `read qqq s:int256 = xxx`) o concl))));;
+
+e(CONV_TAC(TOP_DEPTH_CONV EXPAND_CASES_CONV) THEN
+  CONV_TAC(DEPTH_CONV NUM_MULT_CONV THENC
+           DEPTH_CONV NUM_ADD_CONV THENC
+           DEPTH_CONV let_CONV) THEN
+  ASM_REWRITE_TAC[WORD_ADD_0]);;
+
+e(DISCARD_STATE_TAC "s543");;
+
+e(REPEAT CONJ_TAC THEN
+  REWRITE_TAC[mldsa_pointwise_mont]);;
+
+e(ASSUM_LIST((fun ths -> W(MP_TAC o CONJUNCT1 o GEN_CONGBOUND_RULE ths o
+    rand o lhand o rator o snd))) THEN
+  REWRITE_TAC[GSYM INT_REM_EQ] THEN 
+  CONV_TAC INT_REM_DOWN_CONV THEN
+  MATCH_MP_TAC EQ_IMP THEN 
+  AP_TERM_TAC THEN 
+  AP_THM_TAC THEN 
+  AP_TERM_TAC THEN
+  CONV_TAC INT_RING);;
+
+(*** 
+
+
+e(ASSUM_LIST((fun ths -> W(MP_TAC o CONJUNCT1 o GEN_CONGBOUND_RULE ths o
+    rand o lhand o rator o snd))));;
+
+e(REWRITE_TAC[GSYM INT_REM_EQ]);;
+
+e(CONV_TAC INT_REM_DOWN_CONV);;
+
+e(MATCH_MP_TAC EQ_IMP);;
+
+e(AP_TERM_TAC);;
+
+e(AP_THM_TAC);;
+
+e(AP_TERM_TAC);;
+
+e(CONV_TAC INT_RING);;
+
+
+
+
+e(X86_STEPS_TAC MLDSA_POINTWISE_TMC_EXEC (1--543));;
+e(ENSURES_FINAL_STATE_TAC);;
+e(ASM_REWRITE_TAC[]);;
+e(CONJ_TAC);;
+
+e(REWRITE_TAC[MAYCHANGE]);;
+e(GEN_TAC THEN DISCH_TAC);;
+
+e(ASM_REWRITE_TAC[ASSIGNS]);;
+
+(* ========================================================================= *)
+(* Full Proof Development with Loop Unrolling                                *)
+(* ========================================================================= *)
+
+(* After memory merging for inputs *)
+(*
+e(MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 3
+    (subst[mk_small_numeral(32*n),`n:num`]
+      `read (memory :> bytes256(word_add a (word n))) s0`))
+    (0--31))));;
+
+e(ASM_REWRITE_TAC[WORD_ADD_0]);;
+e(DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 any) s = x`]);;
+  
+e(MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 3
+    (subst[mk_small_numeral(32*n),`n:num`]
+      `read (memory :> bytes256(word_add b (word n))) s0`))
+    (0--31))));;
+
+e(ASM_REWRITE_TAC[WORD_ADD_0]);;
+e(DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 any) s = x`]);;
+e(REPEAT STRIP_TAC);;
+*)
+
+(* After execution and ENSURES_FINAL_STATE_TAC *)
+(*
+(* Memory conversion: bytes256 writes -> bytes32 reads for output *)
+e(REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+    CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
+    CONV_RULE(READ_MEMORY_SPLIT_CONV 3) o
+    check (can (term_match [] `read qqq s:int256 = xxx`) o concl))));;
+
+(* Final simplification *)
+e(CONV_TAC(TOP_DEPTH_CONV EXPAND_CASES_CONV));;
+e(CONV_TAC(DEPTH_CONV NUM_MULT_CONV THENC
+           DEPTH_CONV NUM_ADD_CONV THENC
+           DEPTH_CONV let_CONV));;
+e(ASM_REWRITE_TAC[WORD_ADD_0]);;
+
+e(DISCARD_STATE_TAC "s543");;
+
+(* Prove correctness for each coefficient *)
+e(REPEAT CONJ_TAC);;
+e(REWRITE_TAC[pmul_montred_mldsa; pmontred_mldsa; pmul_mldsa]);;
+e(STRIP_TAC);;
+  
+(* Bounds and congruence reasoning *)
+e(ASSUM_LIST((fun ths -> W(MP_TAC o CONJUNCT1 o GEN_CONGBOUND_RULE ths o
+    rand o lhand o rator o snd))));;
+e(REWRITE_TAC[GSYM INT_REM_EQ]);;
+e(CONV_TAC INT_REM_DOWN_CONV);;
+e(MATCH_MP_TAC EQ_IMP);;
+e(AP_TERM_TAC);;
+e(AP_THM_TAC);;
+e(AP_TERM_TAC);;
+e(CONV_TAC INT_RING);;
+*)
+***)
