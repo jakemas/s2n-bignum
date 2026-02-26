@@ -4,7 +4,7 @@
  *)
 
 (* ========================================================================= *)
-(*                               *)
+(* Pointwise multiplication and accumulation of polynomials in ML-DSA NTT    *)
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
@@ -70,8 +70,8 @@ let mldsa_pointwise_acc_l4_mc = define_assert_from_elf "mldsa_pointwise_acc_l4_m
                            (* VPMULDQ (%_% ymm8) (%_% ymm8) (%_% ymm12) *)
   0xc4; 0x42; 0x35; 0x28; 0xcd;
                            (* VPMULDQ (%_% ymm9) (%_% ymm9) (%_% ymm13) *)
-  0xc5; 0xed; 0xd4; 0xd6;  (* VPADDQ (%_% ymm2) (%_% ymm2) (%_% ymm6) *)
-  0xc5; 0xe5; 0xd4; 0xdf;  (* VPADDQ (%_% ymm3) (%_% ymm3) (%_% ymm7) *)
+  0xc5; 0xcd; 0xd4; 0xd2;  (* VPADDQ (%_% ymm2) (%_% ymm6) (%_% ymm2) *)
+  0xc5; 0xc5; 0xd4; 0xdb;  (* VPADDQ (%_% ymm3) (%_% ymm7) (%_% ymm3) *)
   0xc5; 0xbd; 0xd4; 0xe4;  (* VPADDQ (%_% ymm4) (%_% ymm8) (%_% ymm4) *)
   0xc5; 0xb5; 0xd4; 0xed;  (* VPADDQ (%_% ymm5) (%_% ymm9) (%_% ymm5) *)
   0xc5; 0xfd; 0x6f; 0xb6; 0x00; 0x08; 0x00; 0x00;
@@ -98,8 +98,8 @@ let mldsa_pointwise_acc_l4_mc = define_assert_from_elf "mldsa_pointwise_acc_l4_m
                            (* VPMULDQ (%_% ymm8) (%_% ymm8) (%_% ymm12) *)
   0xc4; 0x42; 0x35; 0x28; 0xcd;
                            (* VPMULDQ (%_% ymm9) (%_% ymm9) (%_% ymm13) *)
-  0xc5; 0xed; 0xd4; 0xd6;  (* VPADDQ (%_% ymm2) (%_% ymm2) (%_% ymm6) *)
-  0xc5; 0xe5; 0xd4; 0xdf;  (* VPADDQ (%_% ymm3) (%_% ymm3) (%_% ymm7) *)
+  0xc5; 0xcd; 0xd4; 0xd2;  (* VPADDQ (%_% ymm2) (%_% ymm6) (%_% ymm2) *)
+  0xc5; 0xc5; 0xd4; 0xdb;  (* VPADDQ (%_% ymm3) (%_% ymm7) (%_% ymm3) *)
   0xc5; 0xbd; 0xd4; 0xe4;  (* VPADDQ (%_% ymm4) (%_% ymm8) (%_% ymm4) *)
   0xc5; 0xb5; 0xd4; 0xed;  (* VPADDQ (%_% ymm5) (%_% ymm9) (%_% ymm5) *)
   0xc5; 0xfd; 0x6f; 0xb6; 0x00; 0x0c; 0x00; 0x00;
@@ -126,26 +126,26 @@ let mldsa_pointwise_acc_l4_mc = define_assert_from_elf "mldsa_pointwise_acc_l4_m
                            (* VPMULDQ (%_% ymm8) (%_% ymm8) (%_% ymm12) *)
   0xc4; 0x42; 0x35; 0x28; 0xcd;
                            (* VPMULDQ (%_% ymm9) (%_% ymm9) (%_% ymm13) *)
-  0xc5; 0xed; 0xd4; 0xd6;  (* VPADDQ (%_% ymm2) (%_% ymm2) (%_% ymm6) *)
-  0xc5; 0xe5; 0xd4; 0xdf;  (* VPADDQ (%_% ymm3) (%_% ymm3) (%_% ymm7) *)
+  0xc5; 0xcd; 0xd4; 0xd2;  (* VPADDQ (%_% ymm2) (%_% ymm6) (%_% ymm2) *)
+  0xc5; 0xc5; 0xd4; 0xdb;  (* VPADDQ (%_% ymm3) (%_% ymm7) (%_% ymm3) *)
   0xc5; 0xbd; 0xd4; 0xe4;  (* VPADDQ (%_% ymm4) (%_% ymm8) (%_% ymm4) *)
   0xc5; 0xb5; 0xd4; 0xed;  (* VPADDQ (%_% ymm5) (%_% ymm9) (%_% ymm5) *)
-  0xc4; 0xe2; 0x6d; 0x28; 0xf0;
-                           (* VPMULDQ (%_% ymm6) (%_% ymm2) (%_% ymm0) *)
-  0xc4; 0xe2; 0x65; 0x28; 0xf8;
-                           (* VPMULDQ (%_% ymm7) (%_% ymm3) (%_% ymm0) *)
-  0xc4; 0x62; 0x5d; 0x28; 0xc0;
-                           (* VPMULDQ (%_% ymm8) (%_% ymm4) (%_% ymm0) *)
-  0xc4; 0x62; 0x55; 0x28; 0xc8;
-                           (* VPMULDQ (%_% ymm9) (%_% ymm5) (%_% ymm0) *)
-  0xc4; 0xe2; 0x4d; 0x28; 0xf1;
-                           (* VPMULDQ (%_% ymm6) (%_% ymm6) (%_% ymm1) *)
-  0xc4; 0xe2; 0x45; 0x28; 0xf9;
-                           (* VPMULDQ (%_% ymm7) (%_% ymm7) (%_% ymm1) *)
-  0xc4; 0x62; 0x3d; 0x28; 0xc1;
-                           (* VPMULDQ (%_% ymm8) (%_% ymm8) (%_% ymm1) *)
-  0xc4; 0x62; 0x35; 0x28; 0xc9;
-                           (* VPMULDQ (%_% ymm9) (%_% ymm9) (%_% ymm1) *)
+  0xc4; 0xe2; 0x7d; 0x28; 0xf2;
+                           (* VPMULDQ (%_% ymm6) (%_% ymm0) (%_% ymm2) *)
+  0xc4; 0xe2; 0x7d; 0x28; 0xfb;
+                           (* VPMULDQ (%_% ymm7) (%_% ymm0) (%_% ymm3) *)
+  0xc4; 0x62; 0x7d; 0x28; 0xc4;
+                           (* VPMULDQ (%_% ymm8) (%_% ymm0) (%_% ymm4) *)
+  0xc4; 0x62; 0x7d; 0x28; 0xcd;
+                           (* VPMULDQ (%_% ymm9) (%_% ymm0) (%_% ymm5) *)
+  0xc4; 0xe2; 0x75; 0x28; 0xf6;
+                           (* VPMULDQ (%_% ymm6) (%_% ymm1) (%_% ymm6) *)
+  0xc4; 0xe2; 0x75; 0x28; 0xff;
+                           (* VPMULDQ (%_% ymm7) (%_% ymm1) (%_% ymm7) *)
+  0xc4; 0x42; 0x75; 0x28; 0xc0;
+                           (* VPMULDQ (%_% ymm8) (%_% ymm1) (%_% ymm8) *)
+  0xc4; 0x42; 0x75; 0x28; 0xc9;
+                           (* VPMULDQ (%_% ymm9) (%_% ymm1) (%_% ymm9) *)
   0xc5; 0xed; 0xfb; 0xd6;  (* VPSUBQ (%_% ymm2) (%_% ymm2) (%_% ymm6) *)
   0xc5; 0xe5; 0xfb; 0xdf;  (* VPSUBQ (%_% ymm3) (%_% ymm3) (%_% ymm7) *)
   0xc4; 0xc1; 0x5d; 0xfb; 0xe0;
