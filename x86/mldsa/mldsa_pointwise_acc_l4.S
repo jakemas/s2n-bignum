@@ -49,8 +49,8 @@
 #define b rdx
 #define qdata rcx
 
-#define MLD_AVX2_BACKEND_DATA_OFFSET_8XQINV 0
-#define MLD_AVX2_BACKEND_DATA_OFFSET_8XQ 8
+#define MLD_AVX2_BACKEND_DATA_OFFSET_8XQ 0
+#define MLD_AVX2_BACKEND_DATA_OFFSET_8XQINV 8
 
 .macro pointwise off
 // Load a's coefficients

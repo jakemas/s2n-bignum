@@ -990,6 +990,10 @@ extern void mldsa_intt(int32_t a[S2N_BIGNUM_STATIC 256], const int32_t zetas[S2N
 // Input a[256], zetas[624] (signed 32-bit words); output a[256] (signed 32-bit words)
 extern void mldsa_ntt(int32_t a[S2N_BIGNUM_STATIC 256], const int32_t zetas[S2N_BIGNUM_STATIC 624]);
 
+// Pointwise multiplication with accumulation for ML-DSA L4
+// Inputs a[1024], b[1024], qdata[16] (signed 32-bit words); output c[256] (signed 32-bit words)
+extern void mldsa_pointwise_acc_l4_x86(int32_t c[S2N_BIGNUM_STATIC 256], const int32_t a[S2N_BIGNUM_STATIC 1024], const int32_t b[S2N_BIGNUM_STATIC 1024], const int32_t qdata[S2N_BIGNUM_STATIC 16]);
+
 // Canonical reduction of polynomial coefficients for ML-DSA
 // Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words)
 extern void mldsa_reduce(int32_t a[S2N_BIGNUM_STATIC 256]);
