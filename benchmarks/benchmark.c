@@ -1132,6 +1132,7 @@ void call_mldsa_intt(void) {}
 void call_mldsa_ntt(void) repeat(mldsa_ntt_arm((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2))
 void call_mldsa_nttunpack(void) {}
 void call_mldsa_pointwise(void) repeat(mldsa_pointwise((int32_t*)b0,(int32_t*)b1,(int32_t*)b2))
+void call_mldsa_pointwise_acc_l4(void) {}
 void call_mldsa_reduce(void) {}
 
 void call_bignum_copy_row_from_table_8n__32_16(void) \
