@@ -301,6 +301,7 @@ onlyInArm = [
   "mldsa_intt_arm",
   "mldsa_pointwise",
   "mldsa_ntt_arm",
+  "mldsa_pointwise_acc_l4",
   "mlkem_ntt",
   "mlkem_intt",
   "mlkem_mulcache_compute",
