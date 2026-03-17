@@ -700,7 +700,7 @@ let MLDSA_NTTUNPACK_SAFE = time prove
                     (exists e2.
                          read events s = APPEND e2 e /\
                          e2 = f_events a pc /\
-                         memaccess_inbounds e2 [a,1024; a,1024] [a,1024]))
+                         memaccess_inbounds e2 [a,1024] [a,1024]))
                (MAYCHANGE [events] ,,
                 MAYCHANGE [memory :> bytes (a,1024)] ,,
                 MAYCHANGE [RIP] ,,
@@ -729,7 +729,7 @@ let MLDSA_NTTUNPACK_NOIBT_SUBROUTINE_SAFE = time prove
                  (exists e2.
                       read events s = APPEND e2 e /\
                       e2 = f_events a pc stackpointer returnaddress /\
-                      memaccess_inbounds e2 [a,1024; a,1024; stackpointer,8]
+                      memaccess_inbounds e2 [a,1024; stackpointer,8]
                       [a,1024; stackpointer,0]))
             (MAYCHANGE [RSP] ,,
              MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
@@ -757,7 +757,7 @@ let MLDSA_NTTUNPACK_SUBROUTINE_SAFE = time prove
                  (exists e2.
                       read events s = APPEND e2 e /\
                       e2 = f_events a pc stackpointer returnaddress /\
-                      memaccess_inbounds e2 [a,1024; a,1024; stackpointer,8]
+                      memaccess_inbounds e2 [a,1024; stackpointer,8]
                       [a,1024; stackpointer,0]))
             (MAYCHANGE [RSP] ,,
              MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
@@ -793,7 +793,7 @@ let MLDSA_NTTUNPACK_NOIBT_WINDOWS_SUBROUTINE_SAFE = time prove
                       f_events a pc (word_sub stackpointer (word 176))
                       returnaddress /\
                       memaccess_inbounds e2
-                      [a,1024; a,1024; word_sub stackpointer (word 176),184]
+                      [a,1024; word_sub stackpointer (word 176),184]
                       [a,1024; word_sub stackpointer (word 176),176]))
             (MAYCHANGE [RSP] ,,
              MAYCHANGE [memory :> bytes (a,1024)] ,,
@@ -917,7 +917,7 @@ let MLDSA_NTTUNPACK_WINDOWS_SUBROUTINE_SAFE = time prove
                       f_events a pc (word_sub stackpointer (word 176))
                       returnaddress /\
                       memaccess_inbounds e2
-                      [a,1024; a,1024; word_sub stackpointer (word 176),184]
+                      [a,1024; word_sub stackpointer (word 176),184]
                       [a,1024; word_sub stackpointer (word 176),176]))
             (MAYCHANGE [RSP] ,,
              MAYCHANGE [memory :> bytes (a,1024)] ,,
