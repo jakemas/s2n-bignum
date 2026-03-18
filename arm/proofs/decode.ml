@@ -122,6 +122,8 @@ let arm_adv_simd_expand_imm = new_definition
             :(48)word)
           :(56)word) in
       SOME res
+    else if val cmode = 14 /\ val op = 0 then
+      SOME(word_duplicate abcdefgh:(64)word)
     else if cmode = word 0b1000 \/ cmode = word 0b1001 then
       SOME(word_duplicate (word_join (word 0:byte) abcdefgh:int16))
     else if cmode = word 0b1010 \/ cmode = word 0b1011 then
@@ -568,6 +570,26 @@ let decode = new_definition `!w:int32. decode w =
         let datasize = if q then 128 else 64 in
         let shift = (esize * 2) - val (word_join immh immb:(7)word) in
         SOME (arm_SRI_VEC (QREG' Rd) (QREG' Rn) shift esize datasize)
+    else if cmode = (word 0b1010:(4)word) then
+      // USHLL / USHLL2
+      let immb = abc in
+      let Rn = defgh in
+      if val immh = 0 then NONE
+      else
+        let esize = 8 * 2 EXP (3 - word_clz immh) in
+        let shift = val (word_join immh immb:(7)word) - esize in
+        if q then SOME (arm_USHLL2_VEC (QREG' Rd) (QREG' Rn) shift esize)
+        else SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
+    else NONE
+
+  | [0:1; q; 0:1; 0b011110:6; 0b0000:4; abc:3; cmode:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, immh=0)
+    if cmode = word 0b1110 /\ q then
+      let abcdefgh:(8)word = word_join abc defgh in
+      let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) cmode in
+      match imm with
+      | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
+      | NONE -> NONE
     else NONE
 
   | [0b0001111000100110000000:22; Rn:5; Rd:5] ->
