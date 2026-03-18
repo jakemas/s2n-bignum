@@ -612,15 +612,22 @@ let decode = new_definition `!w:int32. decode w =
       // USHLL, USHLL2
       let immb = abc in
       let Rn = defgh in
-      if bit 3 immh then NONE // "UNDEFINED"
+      if val immh = 0 then NONE
+      else if bit 3 immh then NONE // "UNDEFINED" (would need 128-bit elements)
       else
         let esize = 8 * 2 EXP (3 - word_clz immh) in
-        let shift = val(word_join immh immb:7 word) - esize in
-        if q then
-          SOME (arm_USHLL2_VEC (QREG' Rd) (QREG' Rn) shift esize)
-        else
-          SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
+        let shift = val (word_join immh immb:(7)word) - esize in
+        if q then SOME (arm_USHLL2_VEC (QREG' Rd) (QREG' Rn) shift esize)
+        else SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
     else NONE
+
+  | [0:1; 1:1; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, cmode=1110, Q=1, immh=0)
+    let abcdefgh:(8)word = word_join abc defgh in
+    let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1110:(4)word) in
+    (match imm with
+    | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
+    | NONE -> NONE)
 
   | [0b0001111000100110000000:22; Rn:5; Rd:5] ->
     // FMOV (single, to general)
