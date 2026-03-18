@@ -182,7 +182,8 @@ let iclasses =
   "0x001110xx1xxxxx100101xxxxxxxxxx";
 
   (*** MOVI ***)
-  "0110111100000xxx111001xxxxxxxxxx"; (* q=1, cmode=1110 *)
+  "0110111100000xxx111001xxxxxxxxxx"; (* q=1, cmode=1110, op=1 *)
+  "0100111100000xxx111001xxxxxxxxxx"; (* q=1, cmode=1110, op=0 *)
 
   (*** MUL (by element; focus on defined sizes) ***)
   "0x00111101xxxxxx1000x0xxxxxxxxxx";
@@ -334,6 +335,12 @@ let iclasses =
 
   (*** UMULL2 ***)
   "01101110xx1xxxxx110000xxxxxxxxxx";
+
+  (*** USHLL / USHLL2 (make sure immh is nonzero) ***)
+  "0x10111101xxxxxx101001xxxxxxxxxx";
+  "0x101111001xxxxx101001xxxxxxxxxx";
+  "0x1011110001xxxx101001xxxxxxxxxx";
+  "0x10111100001xxx101001xxxxxxxxxx";
 
   (*** USHR (make sure immh is nonzero) ***)
   "0x10111101xxxxxx000001xxxxxxxxxx";
