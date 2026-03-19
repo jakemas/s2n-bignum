@@ -190,14 +190,16 @@ let iclasses =
   (*** MOVI (op=1, 64-bit) ***)
   "0110111100000xxx111001xxxxxxxxxx"; (* q=1, op=1, cmode=1110 *)
 
-  (*** MOVI (op=0, cmode=1110, byte) ***)
-  "0x00111100000xxx111001xxxxxxxxxx";
+  (*** MOVI (op=0, cmode=1110, byte, q=1 only) ***)
+  (*** q=0 not yet modeled: arm_MOVI duplicates imm to both halves ***)
+  (*** but q=0 should zero the upper 64 bits ***)
+  "0100111100000xxx111001xxxxxxxxxx";
 
-  (*** MOVI (op=0, cmode=1000, 16-bit) -- shares opcode with SHRN ***)
-  "0x00111100000xxx100001xxxxxxxxxx";
+  (*** MOVI (op=0, cmode=1000, 16-bit, q=1 only) -- shares opcode with SHRN ***)
+  "0100111100000xxx100001xxxxxxxxxx";
 
-  (*** MOVI (op=0, cmode=1010, 16-bit shifted) -- shares opcode with SSHLL ***)
-  "0x00111100000xxx101001xxxxxxxxxx";
+  (*** MOVI (op=0, cmode=1010, 16-bit shifted, q=1 only) -- shares opcode with SSHLL ***)
+  "0100111100000xxx101001xxxxxxxxxx";
 
   (*** MUL (by element; focus on defined sizes) ***)
   "0x00111101xxxxxx1000x0xxxxxxxxxx";
