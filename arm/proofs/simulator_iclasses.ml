@@ -111,6 +111,9 @@ let iclasses =
   (*** ADD ***)
   "0x001110xx1xxxxx100001xxxxxxxxxx";
 
+  (*** ABS ***)
+  "0x001110xx100000101110xxxxxxxxxx";
+
   (*** AND ***)
   "0x001110001xxxxx000111xxxxxxxxxx";
 
@@ -125,6 +128,9 @@ let iclasses =
 
   (*** CMHI, vector ***)
   "0x101110xx1xxxxx001101xxxxxxxxxx";
+
+  (*** CMGE, vector ***)
+  "0x001110xx1xxxxx001111xxxxxxxxxx";
 
   (*** CNT, bias to defined size = 0 ***)
   "0x00111000100000010110xxxxxxxxxx";
@@ -181,9 +187,17 @@ let iclasses =
   (*** MLA (vector) ***)
   "0x001110xx1xxxxx100101xxxxxxxxxx";
 
-  (*** MOVI ***)
-  "0110111100000xxx111001xxxxxxxxxx"; (* q=1, cmode=1110, op=1 *)
-  "0100111100000xxx111001xxxxxxxxxx"; (* q=1, cmode=1110, op=0 *)
+  (*** MOVI (op=1, 64-bit) ***)
+  "0110111100000xxx111001xxxxxxxxxx"; (* q=1, op=1, cmode=1110 *)
+
+  (*** MOVI (op=0, cmode=1110, byte, q=1 only) ***)
+  "0100111100000xxx111001xxxxxxxxxx";
+
+  (*** MOVI (op=0, cmode=1000, 16-bit, q=1 only) -- shares opcode with SHRN ***)
+  "0100111100000xxx100001xxxxxxxxxx";
+
+  (*** MOVI (op=0, cmode=1010, 16-bit shifted, q=1 only) -- shares opcode with SSHLL ***)
+  "0100111100000xxx101001xxxxxxxxxx";
 
   (*** MUL (by element; focus on defined sizes) ***)
   "0x00111101xxxxxx1000x0xxxxxxxxxx";
@@ -311,6 +325,9 @@ let iclasses =
   (*** UADDLV ***)
   "0x101110xx110000001110xxxxxxxxxx";
 
+  (*** UMAXV ***)
+  "0x101110xx110000101010xxxxxxxxxx";
+
   (*** UMOV (.d, .s) ***)
   "01001110000x1000001111xxxxxxxxxx";
   "00001110000xx100001111xxxxxxxxxx";
@@ -336,11 +353,16 @@ let iclasses =
   (*** UMULL2 ***)
   "01101110xx1xxxxx110000xxxxxxxxxx";
 
-  (*** USHLL / USHLL2 (make sure immh is nonzero) ***)
+  (*** USHLL (make sure immh is nonzero) ***)
   "0x10111101xxxxxx101001xxxxxxxxxx";
   "0x101111001xxxxx101001xxxxxxxxxx";
   "0x1011110001xxxx101001xxxxxxxxxx";
   "0x10111100001xxx101001xxxxxxxxxx";
+
+  (*** SSHLL (make sure immh is nonzero) ***)
+  "0x001111001xxxxx101001xxxxxxxxxx";
+  "0x0011110001xxxx101001xxxxxxxxxx";
+  "0x00111100001xxx101001xxxxxxxxxx";
 
   (*** USHR (make sure immh is nonzero) ***)
   "0x10111101xxxxxx000001xxxxxxxxxx";
