@@ -289,10 +289,34 @@ let MLDSA_POINTWISE_ACC_L7_CORRECT = prove
     let lfn = PROCESS_BOUND_ASSUMPTIONS
       (CONJUNCTS(tryfind (CONV_RULE EXPAND_CASES_CONV o snd) asl))
     in
-    let prove_group =
-      W(fun (asl,w) ->
-        let mr = rand(lhand(rator(lhand w))) in
-        MP_TAC(ASM_CONGBOUND_RULE lfn mr) THEN
+    (* Pre-compute 1792 ival_mul theorems via ISPECL + assumption lookup *)
+    let ival_mul_thms = Array.init 1792 (fun i ->
+      let iterm = mk_small_numeral i in
+      let xi = mk_comb(`x:num->int32`, iterm) in
+      let yi = mk_comb(`y:num->int32`, iterm) in
+      let th = ISPECL [xi; yi] IVAL_WORD_MUL_SX32_64 in
+      let ante = lhand(concl th) in
+      let ante_x, ante_y = dest_conj ante in
+      let ilt = ARITH_RULE(mk_comb(mk_comb(`(<):num->num->bool`, iterm), `1792`)) in
+      let prove_bound bt =
+        tryfind (fun (_,ath) ->
+          try let a' = SPEC iterm ath in
+              let a'' = MP a' ilt in
+              if aconv (concl a'') bt then a'' else failwith ""
+          with _ -> failwith "") asl in
+      MP th (CONJ (prove_bound ante_x) (prove_bound ante_y))) in
+    (* Extract 256 coefficient pairs from the goal conjunction *)
+    let rec pair_up = function
+      | a :: b :: rest -> mk_conj(a,b) :: pair_up rest
+      | [x] -> [x] | [] -> [] in
+    let pairs = pair_up (conjuncts w) in
+    (* Prove each pair independently *)
+    let prove_pair idx pair =
+      let mr = rand(lhand(rator(lhand pair))) in
+      let cb_th = ASM_CONGBOUND_RULE lfn mr in
+      let relevant_ival = map (fun k -> ival_mul_thms.(idx + 256 * k)) [0;1;2;3;4;5;6] in
+      let (_,sgs,just) = (
+        MP_TAC cb_th THEN
         MATCH_MP_TAC MONO_AND THEN CONJ_TAC THENL
          [(* Congruence branch *)
           REWRITE_TAC[INVERSE_MOD_CONV `inverse_mod 8380417 4294967296`] THEN
@@ -301,20 +325,7 @@ let MLDSA_POINTWISE_ACC_L7_CORRECT = prove
                        INVERSE_MOD_CONV `inverse_mod 8380417 4294967296`] THEN
           CONV_TAC INT_REM_DOWN_CONV THEN
           CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
-          REPEAT(W(fun (_,w) ->
-            let prod = find_term
-              (can (term_match []
-                `ival(word_mul (word_sx (x:int32):int64) (word_sx (y:int32)))`)) w in
-            let wm = rand prod in
-            let xi = rand(rand(rator wm)) in
-            let yi = rand(rand wm) in
-            SUBGOAL_THEN (mk_eq(prod,
-              mk_binop `( * ):int->int->int`
-                (mk_comb(`ival:int32->int`, xi))
-                (mk_comb(`ival:int32->int`, yi)))) SUBST1_TAC THENL
-             [MATCH_MP_TAC IVAL_WORD_MUL_SX32_64 THEN
-              CONJ_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ARITH_TAC;
-              ALL_TAC])) THEN
+          REWRITE_TAC relevant_ival THEN
           CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
           AP_THM_TAC THEN AP_TERM_TAC THEN INT_ARITH_TAC;
           (* Bounds branch *)
@@ -322,11 +333,11 @@ let MLDSA_POINTWISE_ACC_L7_CORRECT = prove
           MATCH_MP_TAC(INT_ARITH
            `l':int <= l /\ u <= u'
             ==> l <= x /\ x <= u ==> l' <= x /\ x <= u'`) THEN
-          CONV_TAC INT_REDUCE_CONV])
-    in
-    REPEAT(W(fun (_,w) ->
-      if length(conjuncts w) > 2 then CONJ_TAC else NO_TAC)) THEN
-    prove_group));;
+          CONV_TAC INT_REDUCE_CONV]) (asl, pair) in
+      if sgs <> [] then failwith ("prove_pair " ^ string_of_int idx)
+      else just null_inst [] in
+    let all_thms = List.map2 prove_pair (0--255) pairs in
+    ACCEPT_TAC(end_itlist CONJ all_thms)));;
 
 (* ========================================================================= *)
 (* Subroutine form                                                           *)
