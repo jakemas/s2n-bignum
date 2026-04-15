@@ -1153,15 +1153,6 @@ static int32_t __attribute__((aligned(32))) mldsa_pointwise_data[16] = {
     8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417,
 };
 
-// Separate data structure for x86 mldsa_pointwise (different order than mldsa_ntt)
-static int32_t __attribute__((aligned(32))) mldsa_pointwise_data[16] = {
-    // Offset 0-7: 8XQINV (8 copies of MLDSA_QINV = 58728449)
-    58728449, 58728449, 58728449, 58728449, 58728449, 58728449, 58728449, 58728449,
-
-    // Offset 8-15: 8XQ (8 copies of MLDSA_Q = 8380417)
-    8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417,
-};
-
 // ****************************************************************************
 // Reference implementations, basic and stupid ones in C
 // ****************************************************************************
