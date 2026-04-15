@@ -1153,15 +1153,6 @@ static int32_t __attribute__((aligned(32))) mldsa_pointwise_data[16] = {
     8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417,
 };
 
-// Separate data structure for x86 mldsa_pointwise (different order than mldsa_ntt)
-static int32_t __attribute__((aligned(32))) mldsa_pointwise_data[16] = {
-    // Offset 0-7: 8XQINV (8 copies of MLDSA_QINV = 58728449)
-    58728449, 58728449, 58728449, 58728449, 58728449, 58728449, 58728449, 58728449,
-
-    // Offset 8-15: 8XQ (8 copies of MLDSA_Q = 8380417)
-    8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417, 8380417,
-};
-
 // ****************************************************************************
 // Reference implementations, basic and stupid ones in C
 // ****************************************************************************
@@ -12837,8 +12828,6 @@ int test_mldsa_pointwise(void)
 // Reference implementation for pointwise multiplication with accumulation (L4)
 void reference_mldsa_pointwise_acc_l4(int32_t c[256], const int32_t a[1024], const int32_t b[1024])
 {
-    const int32_t MLDSA_Q = 8380417;
-
     for (int i = 0; i < 256; i++) {
         // Accumulate products: c[i] = a0[i]*b0[i] + a1[i]*b1[i] + a2[i]*b2[i] + a3[i]*b3[i]
         int64_t acc = 0;
