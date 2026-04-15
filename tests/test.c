@@ -13004,8 +13004,6 @@ int test_mldsa_pointwise_acc_l4(void)
 // Reference implementation for pointwise multiplication with accumulation (L5)
 void reference_mldsa_pointwise_acc_l5(int32_t c[256], const int32_t a[1280], const int32_t b[1280])
 {
-    const int32_t MLDSA_Q = 8380417;
-
     for (int i = 0; i < 256; i++) {
         // Accumulate products: c[i] = a0[i]*b0[i] + a1[i]*b1[i] + a2[i]*b2[i] + a3[i]*b3[i] + a4[i]*b4[i]
         int64_t acc = 0;
@@ -13081,8 +13079,6 @@ int test_mldsa_pointwise_acc_l5(void)
 // Reference implementation for pointwise multiplication with accumulation (L7)
 void reference_mldsa_pointwise_acc_l7(int32_t c[256], const int32_t a[1792], const int32_t b[1792])
 {
-    const int32_t MLDSA_Q = 8380417;
-
     for (int i = 0; i < 256; i++) {
         // Accumulate products over 7 layers
         int64_t acc = 0;
