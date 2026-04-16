@@ -5,9 +5,9 @@
 (* Remaining CHEATs are about functional correctness (SIMD semantics),      *)
 (* not ARM stepping mechanics.                                               *)
 (*                                                                           *)
-(* CHEAT 1: Loop body first half — SIMD compute (27 ARM steps).            *)
-(*   Needs to prove val(read X12 s) <= 8 /\ val(read X13 s) <= 8           *)
-(*   from the popcount SIMD sequence.                                        *)
+(* CHEAT 1a,1b: val(X12) <= 8 and val(X13) <= 8 from SIMD popcount.        *)
+(*   ARM stepping works (27 steps). Only the popcount bounds need proof.    *)
+(*   These follow from CNT+UADDLV counting bits in an 8-halfword mask.     *)
 (*                                                                           *)
 (* CHEAT 2: Loop body postcondition — connecting register state to          *)
 (*   REJ_NIBBLES_ETA4(SUB_LIST(0,8*(i+1)) inlist) specification.           *)
@@ -177,7 +177,7 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    ENSURES_SEQUENCE_TAC `pc + 0xd8`
     `\s. read (memory :> bytes (table,4096)) s =
          num_of_wordlist mldsa_rej_uniform_eta_table /\
-         read (memory :> bytes (buf,buflen)) s = num_of_wordlist inlist /\
+         read (memory :> bytes (buf,buflen)) s = num_of_wordlist (inlist:byte list) /\
          aligned_bytes_loaded s (word pc) mldsa_rej_uniform_eta4_mc /\
          read Q7 s = word 20769504351625144638033088116686852 /\
          read Q30 s = word 46731384791156575435574448262545417 /\
@@ -189,11 +189,25 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read X7 s = word_add stackpointer (word(2 * curlen)) /\
          read X8 s = stackpointer /\ read X9 s = word curlen /\
          read (memory :> bytes (stackpointer,2 * curlen)) s =
-         num_of_wordlist curlist /\
+         num_of_wordlist (curlist:int16 list) /\
          val(read X12 s:int64) <= 8 /\
          val(read X13 s:int64) <= 8` THEN
    CONJ_TAC THENL
-    [CHEAT_TAC;  (* CHEAT 1: First half — SIMD compute + X12/X13 bounds *)
+    [(* CHEAT 1: X12/X13 bounds from SIMD popcount.
+        ARM stepping works (27 steps). Only val(X12)<=8, val(X13)<=8 need proof. *)
+     ENSURES_INIT_TAC "s0" THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+     SUBGOAL_THEN `~(256 <= val(word curlen:int64))` ASSUME_TAC THENL
+      [VAL_INT64_TAC `curlen:num` THEN ASM_REWRITE_TAC[] THEN
+       ASM_ARITH_TAC; ALL_TAC] THEN
+     RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(256 <= val(word curlen:int64))`]) THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--27) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+     CONJ_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+     CONJ_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+     CONJ_TAC THENL [CHEAT_TAC; CHEAT_TAC];
+     (* CHEAT 1a: val(read X12 s27) <= 8 — popcount of 8 mask bits *)
+     (* CHEAT 1b: val(read X13 s27) <= 8 — popcount of 8 mask bits *)
      ALL_TAC] THEN
    (* Second half: TBL + ST1 + ADD X7, with nonoverlapping *)
    ENSURES_INIT_TAC "s0" THEN
