@@ -12,9 +12,9 @@
 (* CHEAT 2: Loop body postcondition — connecting register state to          *)
 (*   REJ_NIBBLES_ETA4(SUB_LIST(0,8*(i+1)) inlist) specification.           *)
 (*                                                                           *)
-(* CHEAT 3: Post-loop exit — multi-branch path case.                        *)
+(* CHEAT 3: Writeback phase — 181 ARM steps, needs BIGNUM_LDIGITIZE_TAC.   *)
 (*                                                                           *)
-(* CHEAT 4: Writeback phase — 181 ARM steps, needs BIGNUM_LDIGITIZE_TAC.   *)
+(* Post-loop exit is FULLY PROVED (both cases).                             *)
 (* ========================================================================= *)
 
 needs "arm/proofs/base.ml";;
@@ -232,5 +232,55 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
 
-   (*** Post-loop exit — CHEAT 3 ***)
-   CHEAT_TAC]);;
+   (*** Post-loop exit — FULLY PROVED ***)
+   SUBGOAL_THEN
+    `LENGTH (REJ_NIBBLES_ETA4 (SUB_LIST (0,8 * N) inlist)) < 272`
+   ASSUME_TAC THENL
+    [ASM_CASES_TAC `N = 0` THENL
+      [ASM_REWRITE_TAC[MULT_CLAUSES; SUB_LIST_CLAUSES;
+                       REJ_NIBBLES_ETA4_EMPTY] THEN
+       REWRITE_TAC[LENGTH] THEN CONV_TAC NUM_REDUCE_CONV;
+       FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`)] THEN
+     ASM_REWRITE_TAC[ARITH_RULE `n - 1 < n <=> ~(n = 0)`] THEN
+     MATCH_MP_TAC(ARITH_RULE
+      `l2 <= l + 16 ==> ~(b < x) /\ l < 256 ==> l2 < 272`) THEN
+     MP_TAC(ISPECL [`inlist:byte list`; `8 * (N - 1)`; `8`; `0`]
+       SUB_LIST_SPLIT) THEN
+     ASM_SIMP_TAC[ARITH_RULE `~(N = 0) ==> 8 * (N - 1) + 8 = 8 * N`] THEN
+     DISCH_THEN SUBST1_TAC THEN REWRITE_TAC[REJ_NIBBLES_ETA4_APPEND] THEN
+     REWRITE_TAC[LENGTH_APPEND; LE_ADD_LCANCEL; ADD_CLAUSES] THEN
+     TRANS_TAC LE_TRANS
+      `2 * LENGTH(SUB_LIST(8*(N-1),8) (inlist:byte list))` THEN
+     CONJ_TAC THENL [REWRITE_TAC[LENGTH_REJ_NIBBLES_ETA4]; ALL_TAC] THEN
+     REWRITE_TAC[LENGTH_SUB_LIST] THEN ARITH_TAC;
+     ALL_TAC] THEN
+   VAL_INT64_TAC
+    `LENGTH (REJ_NIBBLES_ETA4 (SUB_LIST (0,8 * N) inlist))` THEN
+   SUBGOAL_THEN
+    `8 <= val(word_sub (word buflen:int64) (word (8 * N))) <=>
+     8 * (N + 1) <= buflen`
+   ASSUME_TAC THENL
+    [SUBGOAL_THEN `8 * N < 2 EXP 64` ASSUME_TAC THENL
+      [FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`) THEN SIMPLE_ARITH_TAC;
+       MAP_EVERY VAL_INT64_TAC [`8 * N`; `buflen:num`]] THEN
+     ASM_REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
+     FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`) THEN SIMPLE_ARITH_TAC;
+     ALL_TAC] THEN
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   ASM_CASES_TAC `8 * (N + 1) <= buflen` THENL
+    [(* Case B: more input, back edge taken, exit at loop head *)
+     ENSURES_INIT_TAC "s0" THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+     FIRST_X_ASSUM(MP_TAC o check (is_disj o concl)) THEN
+     ASM_REWRITE_TAC[GSYM NOT_LE] THEN DISCH_TAC THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--4) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[ALL] THEN
+     EXISTS_TAC `N:num` THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+     (* Case A: input exhausted, fall through *)
+     ENSURES_INIT_TAC "s0" THEN
+     SUBGOAL_THEN
+      `~(8 <= val(word_sub (word buflen:int64) (word (8 * N))))`
+     ASSUME_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[ALL] THEN
+     EXISTS_TAC `N:num` THEN ASM_REWRITE_TAC[]]]);;
