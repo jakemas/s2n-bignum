@@ -1020,7 +1020,23 @@ let x86_ENDBR64 = new_definition
  `x86_ENDBR64 (s:x86state) = \s'. s = s'`;;
 
 let x86_VZEROUPPER = new_definition
- `x86_VZEROUPPER (s:x86state) = \s'. s = s'`;;
+ `x86_VZEROUPPER (s:x86state) =
+  (XMM0  := read XMM0  s ,,
+   XMM1  := read XMM1  s ,,
+   XMM2  := read XMM2  s ,,
+   XMM3  := read XMM3  s ,,
+   XMM4  := read XMM4  s ,,
+   XMM5  := read XMM5  s ,,
+   XMM6  := read XMM6  s ,,
+   XMM7  := read XMM7  s ,,
+   XMM8  := read XMM8  s ,,
+   XMM9  := read XMM9  s ,,
+   XMM10 := read XMM10 s ,,
+   XMM11 := read XMM11 s ,,
+   XMM12 := read XMM12 s ,,
+   XMM13 := read XMM13 s ,,
+   XMM14 := read XMM14 s ,,
+   XMM15 := read XMM15 s) s`;;
 
 (*** There are really four different multiplies here.
  ***
