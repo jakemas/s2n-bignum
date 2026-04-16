@@ -621,8 +621,8 @@ let decode = new_definition `!w:int32. decode w =
         else SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
     else NONE
 
-  | [0:1; q; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, immh=0, any Q)
+  | [0:1; 1:1; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, cmode=1110, Q=1, immh=0)
     let abcdefgh:(8)word = word_join abc defgh in
     SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
 
@@ -799,8 +799,8 @@ let decode = new_definition `!w:int32. decode w =
     SOME (arm_RAX1 (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b111001:6; Rn:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, byte immediate)
-    if immh = (word 0b0:(4)word) then
+    // MOVI (op=0, cmode=1110, byte immediate, Q=1 only)
+    if immh = (word 0b0:(4)word) /\ q then
       let abcdefgh:(8)word = word_join immb Rn in
       SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
     else NONE
@@ -816,13 +816,15 @@ let decode = new_definition `!w:int32. decode w =
       SOME (arm_SHL_VEC (QREG' Rd) (QREG' Rn) amt esize datasize)
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b101001:6; Rn:5; Rd:5] ->
-    // SSHLL, SSHLL2 (or MOVI with cmode=1010 when immh=0)
+    // SSHLL, SSHLL2 (or MOVI with cmode=1010 when immh=0 and Q=1)
     if immh = (word 0b0:(4)word) then
-      let abcdefgh:(8)word = word_join immb Rn in
-      let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1010) in
-      match imm with
-      | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
-      | NONE -> NONE
+      if q then
+        let abcdefgh:(8)word = word_join immb Rn in
+        let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1010) in
+        match imm with
+        | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
+        | NONE -> NONE
+      else NONE
     else if bit 3 immh then NONE // "UNDEFINED"
     else
       let esize = 8 * 2 EXP (3 - word_clz immh) in
@@ -833,13 +835,15 @@ let decode = new_definition `!w:int32. decode w =
         SOME (arm_SSHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b100001:6; Rn:5; Rd:5] ->
-    // SHRN (or MOVI with cmode=1000 when immh=0)
+    // SHRN (or MOVI with cmode=1000 when immh=0 and Q=1)
     if immh = (word 0b0:(4)word) then
-      let abcdefgh:(8)word = word_join immb Rn in
-      let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1000) in
-      match imm with
-      | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
-      | NONE -> NONE
+      if q then
+        let abcdefgh:(8)word = word_join immb Rn in
+        let imm = arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1000) in
+        match imm with
+        | SOME imm -> SOME (arm_MOVI (QREG' Rd) imm)
+        | NONE -> NONE
+      else NONE
     else if q then NONE // writing to the upper part is unsupported yet
     else if bit 3 immh then NONE // "UNDEFINED"
     else
