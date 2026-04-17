@@ -199,10 +199,8 @@ let iclasses =
   "0100111100000xxx010001xxxxxxxxxx"; (* q=1, op=0, cmode=0100, LSL #16 *)
   "0100111100000xxx110101xxxxxxxxxx"; (* q=1, op=0, cmode=1101, MSL #16 *)
 
-  (*** MOVI (op=0, cmode=1110, byte, q=1 only) ***)
-  (*** q=0 not yet modeled: arm_MOVI duplicates imm to both halves ***)
-  (*** but q=0 should zero the upper 64 bits ***)
-  "0100111100000xxx111001xxxxxxxxxx";
+  (*** MOVI (op=0, cmode=1110, byte) ***)
+  "0x00111100000xxx111001xxxxxxxxxx";
 
   (*** MOVI (op=0, cmode=1000, 16-bit, q=1 only) -- shares opcode with SHRN ***)
   "0100111100000xxx100001xxxxxxxxxx";

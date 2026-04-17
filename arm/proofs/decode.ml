@@ -621,10 +621,11 @@ let decode = new_definition `!w:int32. decode w =
         else SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
     else NONE
 
-  | [0:1; 1:1; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, Q=1, immh=0)
+  | [0:1; q; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, cmode=1110, immh=0)
     let abcdefgh:(8)word = word_join abc defgh in
-    SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+    if q then SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+    else SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
 
   | [0b0001111000100110000000:22; Rn:5; Rd:5] ->
     // FMOV (single, to general)
@@ -799,10 +800,11 @@ let decode = new_definition `!w:int32. decode w =
     SOME (arm_RAX1 (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b111001:6; Rn:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, byte immediate, Q=1 only)
-    if immh = (word 0b0:(4)word) /\ q then
+    // MOVI (op=0, cmode=1110, byte immediate)
+    if immh = (word 0b0:(4)word) then
       let abcdefgh:(8)word = word_join immb Rn in
-      SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+      if q then SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+      else SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
     else NONE
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b010101:6; Rn:5; Rd:5] ->
