@@ -835,6 +835,20 @@ let MEMORY_128_FROM_32_TAC =
     MP_TAC(end_itlist CONJ (map f (0--(n-1))));;
 
 (* ------------------------------------------------------------------------- *)
+(* ML-DSA use_hint Merge 4 x bytes32 into bytes128 at a given base+offset    *)
+(* ------------------------------------------------------------------------- *)
+
+let USE_HINT_MEMORY_128_FROM_32_TAC =
+  let a_tm = `a:int64` and n_tm = `n:num` and i64_ty = `:int64`
+  and pat = `read (memory :> bytes128(word_add a (word n))) s0` in
+  fun v boff n ->
+    let pat' = subst[mk_var(v,i64_ty),a_tm] pat in
+    let f i =
+      let itm = mk_small_numeral(boff + 16*i) in
+      READ_MEMORY_MERGE_CONV 2 (subst[itm,n_tm] pat') in
+    MP_TAC(end_itlist CONJ (map f (0--(n-1))));;
+
+(* ------------------------------------------------------------------------- *)
 (* From |- (x == y) (mod m) /\ P   to   |- (x == y) (mod n) /\ P             *)
 (* ------------------------------------------------------------------------- *)
 
@@ -1912,3 +1926,83 @@ let SIMD_SIMPLIFY_ABBREV_TAC =
       let tms = sort free_in (find_terms pam (rand(concl th''))) in
       (MP_TAC th'' THEN MAP_EVERY AUTO_ABBREV_TAC tms THEN DISCH_TAC) (asl,w) in
   TRY(FIRST_X_ASSUM(ttac o check (simdable o concl)));;
+
+(* ========================================================================= *)
+(* ML-DSA use_hint shared infrastructure lemmas                              *)
+(* Used by both poly_use_hint_32 and poly_use_hint_88 proofs                 *)
+(* ========================================================================= *)
+
+(* ival equals val for values in [0, Q) where Q = 8380417 < 2^31 *)
+let MLDSA_IVAL_VAL = prove(
+  `!a:int32. val a < 8380417 ==> ival a = &(val a)`,
+  GEN_TAC THEN DISCH_TAC THEN
+  SIMP_TAC[ival; DIMINDEX_32] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  COND_CASES_TAC THEN ASM_ARITH_TAC);;
+
+(* For natural numbers, &n is never < -2^31 *)
+let INT_POS_NEG_BOUND = prove(`!n. ~((&n:int) < --(&2147483648))`,
+  GEN_TAC THEN REWRITE_TAC[INT_NOT_LT] THEN
+  MP_TAC(SPEC `n:num` INT_POS) THEN INT_ARITH_TAC);;
+
+(* val(iword(&n)) = n for n < 2^31 *)
+let VAL_IWORD_NUM_32 = prove(
+  `!n. n < 2147483648 ==> val(iword(&n):int32) = n`,
+  GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(ISPECL [`&n:int`] (INST_TYPE [`:32`,`:N`] INT_VAL_IWORD)) THEN
+  REWRITE_TAC[DIMINDEX_32; INT_POS] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  ANTS_TAC THENL
+  [REWRITE_TAC[INT_OF_NUM_LT] THEN ASM_ARITH_TAC;
+   REWRITE_TAC[INT_OF_NUM_EQ] THEN SIMP_TAC[]]);;
+
+(* word_ile x 0 in terms of bit 31 (signed non-positive check) *)
+let WORD_ILE_ZERO_32 = BITBLAST_RULE
+  `!x:int32. word_ile x (word 0) <=> bit 31 x \/ x = word 0`;;
+
+(* val(word_and x (word 15)) = val x MOD 16 *)
+let VAL_WORD_AND_15_32 = BITBLAST_RULE
+  `!x:int32. val(word_and x (word 15:int32)) = val x MOD 16`;;
+
+(* word_2smulh no-saturation for ML-DSA Q range.
+   Eliminates iword_saturate when the input is in [0, Q). *)
+let MLDSA_WORD_2SMULH_NOSATURATE = prove(
+  `!a:int32 c. val a < 8380417 /\ val c < 2147483648
+   ==> word_2smulh a c : int32 =
+       iword((&2 * &(val a) * &(val c)) div &2 pow 32)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[word_2smulh; DIMINDEX_32] THEN
+  SUBGOAL_THEN `ival(a:int32) = &(val a)` SUBST1_TAC THENL
+  [SIMP_TAC[ival; DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV THEN
+   COND_CASES_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `ival(c:int32) = &(val c)` SUBST1_TAC THENL
+  [SIMP_TAC[ival; DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV THEN
+   COND_CASES_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN
+  REWRITE_TAC[iword_saturate; word_INT_MIN; word_INT_MAX; DIMINDEX_32] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_REDUCE_CONV THEN
+  CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  REWRITE_TAC[INT_OF_NUM_CLAUSES] THEN
+  SIMP_TAC[INT_OF_NUM_DIV] THEN
+  REWRITE_TAC[INT_POS_NEG_BOUND] THEN
+  SUBGOAL_THEN `~(&((2 * val(a:int32) * val(c:int32)) DIV 4294967296):int > &2147483647)`
+    (fun th -> REWRITE_TAC[th]) THEN
+  REWRITE_TAC[INT_ARITH `~(x:int > y) <=> x <= y`; INT_OF_NUM_LE] THEN
+  SUBGOAL_THEN `(2 * val(a:int32) * val(c:int32)) DIV 4294967296 <= 2 * val a`
+    (fun th -> MP_TAC th THEN ARITH_TAC) THEN
+  MATCH_MP_TAC(ARITH_RULE `x <= y * 4294967296 ==> x DIV 4294967296 <= y`) THEN
+  SUBGOAL_THEN `val(c:int32) <= 2147483647` ASSUME_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+  TRANS_TAC LE_TRANS `2 * val(a:int32) * 2147483647` THEN CONJ_TAC THENL
+  [ASM_SIMP_TAC[LE_MULT_LCANCEL]; ARITH_TAC]);;
+
+(* word_ishr_round for positive values (val < 2^31) *)
+let MLDSA_WORD_ISHR_ROUND = prove(
+  `!t:int32 n. val t < 2147483648
+   ==> word_ishr_round t n = iword((&(val t) + &2 pow n div &2) div &2 pow n)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[word_ishr_round] THEN
+  SUBGOAL_THEN `ival(t:int32) = &(val t)` SUBST1_TAC THENL
+  [SIMP_TAC[ival; DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV THEN
+   COND_CASES_TAC THEN ASM_ARITH_TAC;
+   REFL_TAC]);;
