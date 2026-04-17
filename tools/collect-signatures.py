@@ -300,6 +300,7 @@ onlyInArm = [
   "sha3_",
   "mldsa_pointwise",
   "mldsa_ntt_arm",
+  "mldsa_poly_use_hint_32",
   "mlkem_ntt",
   "mlkem_intt",
   "mlkem_mulcache_compute",
