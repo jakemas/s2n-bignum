@@ -271,6 +271,36 @@ let cnt_hw_tac =
   ONCE_REWRITE_TAC[WORD_AND_SYM] THEN
   REWRITE_TAC[POPCOUNT_AND_POWERS; BITVAL_BOUND];;
 
+(* FILTER length = sum of bitvals for 8 elements *)
+let FILTER_LENGTH_BITVAL = prove(
+  `!a b c d e f g h:int16.
+   LENGTH(FILTER (\x:int16. val x < 9) [a;b;c;d;e;f;g;h]) =
+   bitval(val a < 9) + bitval(val b < 9) + bitval(val c < 9) +
+   bitval(val d < 9) + bitval(val e < 9) + bitval(val f < 9) +
+   bitval(val g < 9) + bitval(val h < 9)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[FILTER] THEN
+  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[LENGTH; bitval]) THEN
+  ARITH_TAC);;
+
+(* Exact UADDLV value = sum of bitvals (not just bound) *)
+let UADDLV_COUNT_LEMMA = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7.
+   val(word_zx(word_subword
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b0):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b1):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b2):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b3):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b4):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b5):byte):int16)(0,16):int128)
+     (word_add (word_subword(word_join (word 0:byte) (word(bitval b6):byte):int16)(0,16):int128)
+     (word_subword(word_join (word 0:byte) (word(bitval b7):byte):int16)(0,16):int128))))))))(0,32):int32):int64) =
+   bitval b0 + bitval b1 + bitval b2 + bitval b3 +
+   bitval b4 + bitval b5 + bitval b6 + bitval b7`,
+  REPEAT GEN_TAC THEN
+  MAP_EVERY BOOL_CASES_TAC [`b0:bool`;`b1:bool`;`b2:bool`;`b3:bool`;
+    `b4:bool`;`b5:bool`;`b6:bool`;`b7:bool`] THEN
+  REWRITE_TAC[bitval] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV));;
+
 let CNT_HW_BOUNDS = map (fun k ->
   let lo = string_of_int (k * 16) and hi = string_of_int (k * 16 + 8) in
   prove(parse_term(
@@ -432,7 +462,7 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
     [EXPAND_TAC "curlen" THEN EXPAND_TAC "curlist" THEN
      ASM_REWRITE_TAC[]; ALL_TAC] THEN
    (* Split loop body: first half = SIMD compute, second half = stores *)
-   ENSURES_SEQUENCE_TAC `pc + 0xd8`
+   ENSURES_SEQUENCE_TAC `pc + 0xe0`
     `\s. read (memory :> bytes (table,4096)) s =
          num_of_wordlist mldsa_rej_uniform_eta_table /\
          read (memory :> bytes (buf,buflen)) s = num_of_wordlist (inlist:byte list) /\
@@ -449,57 +479,86 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read (memory :> bytes (stackpointer,2 * curlen)) s =
          num_of_wordlist (curlist:int16 list) /\
          val(read X12 s:int64) <= 8 /\
-         val(read X13 s:int64) <= 8` THEN
+         val(read X13 s:int64) <= 8 /\
+         curlen < 256 /\
+         nonoverlapping (stackpointer,576) (word pc,344)` THEN
    CONJ_TAC THENL
     [(* First half: SIMD compute chain *)
-     (* Key: split stepping at s19, apply SIMD simplification between *)
-     (* the two UADDLV+FMOV chains. Use ARM_VERBOSE_STEP_TAC for the *)
-     (* final FMOV steps 26-27 to capture X12/X13 symbolically, then *)
-     (* prove popcount bounds BEFORE second SIMD simplification.     *)
      ENSURES_INIT_TAC "s0" THEN
      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
      SUBGOAL_THEN `~(256 <= val(word curlen:int64))` ASSUME_TAC THENL
       [VAL_INT64_TAC `curlen:num` THEN ASM_REWRITE_TAC[] THEN
        ASM_ARITH_TAC; ALL_TAC] THEN
      RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(256 <= val(word curlen:int64))`]) THEN
-     (* Per-step SIMD_SIMPLIFY for steps 3-13 *)
-     MAP_EVERY (fun n ->
-       ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [n] THEN
-       SIMD_SIMPLIFY_TAC []) (3--13) THEN
-     (* Verbose steps 14-27: AND, AND, UADDLV*2, FMOV*2, LDR*2, CNT*2, UADDLV*2, FMOV*2 *)
-     MAP_EVERY (fun n ->
-       ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC
-         ("s" ^ string_of_int n)) (14--27) THEN
-     ENSURES_FINAL_STATE_TAC THEN
-     CONJ_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+     (* Steps 3-11: nibble extraction through USHLL *)
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--11) THEN
+     (* ABBREV Q16 to preserve through later steps *)
+     ABBREV_TAC `nibbles0:int128 = read Q16 s11` THEN
+     (* Steps 12-29: CMHI through TBL *)
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (12--19) THEN
+     RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+     RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
+     RULE_ASSUM_TAC(REWRITE_RULE
+      [word_ugt; relational2; GT; WORD_AND_MASK]) THEN
+     RULE_ASSUM_TAC(ONCE_REWRITE_RULE[COND_RAND]) THEN
+     RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
+     (* No REABBREV for idx — let full expression flow for COND_CASES *)
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (20--25) THEN
+     RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_AND]) THEN
+     RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+     RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
+     RULE_ASSUM_TAC(REWRITE_RULE
+      [word_ugt; relational2; GT; WORD_AND_MASK]) THEN
+     RULE_ASSUM_TAC(ONCE_REWRITE_RULE[COND_RAND]) THEN
+     RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (26--29) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
      ASM_REWRITE_TAC[WORD_SUBWORD_AND] THEN
      CONV_TAC(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
      CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
      REWRITE_TAC[WORD_AND_0; WORD_POPCOUNT_0; ADD_CLAUSES] THEN
      REWRITE_TAC[POPCOUNT_AND_POWERS] THEN
-     (* Split word equalities from val bounds *)
-     REPEAT CONJ_TAC THENL
-      [CONV_TAC WORD_RULE;
-       CONV_TAC WORD_RULE;
-       REWRITE_TAC[UADDLV_BOUND_LEMMA];
-       REWRITE_TAC[UADDLV_BOUND_LEMMA]];
-     CHEAT_TAC];  (* second half *)
-   CHEAT_TAC;  (* back-edge *)
+     REPEAT CONJ_TAC THEN
+     TRY(CONV_TAC WORD_RULE) THEN
+     TRY(NONOVERLAPPING_TAC) THEN
+     TRY(REWRITE_TAC[UADDLV_BOUND_LEMMA]) THEN
+     TRY(ASM_ARITH_TAC) THEN
+     (* X13/Q21 bound: expand Q21 s29 then apply UADDLV *)
+     CHEAT_TAC;  (* val(read X13 s29) <= 8: needs structural fix *)
+     ALL_TAC] THEN
+   (* Second half: ST1 + ADD + count accumulation + CMP *)
+   ENSURES_INIT_TAC "s0" THEN
+   ABBREV_TAC `len0 = val(read X12 s0:int64)` THEN
+   ABBREV_TAC `len1 = val(read X13 s0:int64)` THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [1] THEN
+   ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC "s2" THEN
+   FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE RAND_CONV [WORD_ADD_SHL1]) THEN
+   ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+   SUBGOAL_THEN
+    `nonoverlapping (word_add stackpointer (word(2 * (curlen + len0))):int64,
+                     16) (word pc:int64, 344)`
+   ASSUME_TAC THENL [NONOVERLAPPING_TAC; ALL_TAC] THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [3] THEN
+   ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC "s4" THEN
+   FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE RAND_CONV [WORD_ADD_SHL1]) THEN
+   ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (5--6) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   CHEAT_TAC;  (* postcondition: loop invariant at i+1 *)
+   (* back-edge: CMP X2,(word 8) + BCS back to pc+0x6c *)
+   X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+   FIRST_X_ASSUM(MP_TAC o C MATCH_MP (ASSUME `i:num < N`)) THEN
+   REWRITE_TAC[DE_MORGAN_THM; NOT_LT] THEN STRIP_TAC THEN
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   ENSURES_INIT_TAC "s0" THEN
+   SUBGOAL_THEN `8 <= val(word_sub (word buflen:int64) (word(8 * i)))`
+   ASSUME_TAC THENL
+    [SUBGOAL_THEN `8 * i < 2 EXP 64` ASSUME_TAC THENL
+      [UNDISCH_TAC `buflen < 2 EXP 64` THEN
+       UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+     VAL_INT64_TAC `8 * i` THEN ASM_REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
+     UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+   (* post-loop *)
    CHEAT_TAC]);;  (* post-loop *)
-
-(* Capture theorem: let MLDSA_REJ_UNIFORM_ETA4_CORRECT = top_thm();; *)
-
-(* STATUS: 3 CHEATs remaining.                                        *)
-(* CHEAT 1: val(X12) <= 8 /\ val(X13) <= 8 (popcount bounds)         *)
-(*   PROVED interactively via separate e() calls:                      *)
-(*   1. Verbose steps 14-15 (AND v4/v5 with Q31)                      *)
-(*   2. SUBGOAL_THEN existentials: ?y. Q4 = word_and y Q31            *)
-(*   3. Steps 16-21 + verbose 22-27 (CNT/UADDLV/FMOV chain)          *)
-(*   4. ASM_REWRITE[WORD_SUBWORD_AND] + POPCOUNT_AND_POWERS + ARITH   *)
-(*   Blocked in batch loadt by ARM state tracker: read Q4 s21 doesn't *)
-(*   see the word_and structure substituted at s14. The tracker uses   *)
-(*   instruction-trace resolution, not term substitution.              *)
-(*   Fix: ask June/John about propagating register values across      *)
-(*   state changes in the eventually continuation.                     *)
-(* CHEAT 2: Loop body postcondition (REJ_NIBBLES_ETA4 connection)     *)
-(* CHEAT 3: Writeback phase (181 steps + BIGNUM_LDIGITIZE_TAC)        *)
