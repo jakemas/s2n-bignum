@@ -479,7 +479,6 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read (memory :> bytes (stackpointer,2 * curlen)) s =
          num_of_wordlist (curlist:int16 list) /\
          val(read X12 s:int64) <= 8 /\
-         val(read X13 s:int64) <= 8 /\
          curlen < 256 /\
          nonoverlapping (stackpointer,576) (word pc,344)` THEN
    CONJ_TAC THENL
@@ -522,9 +521,7 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
      TRY(CONV_TAC WORD_RULE) THEN
      TRY(NONOVERLAPPING_TAC) THEN
      TRY(REWRITE_TAC[UADDLV_BOUND_LEMMA]) THEN
-     TRY(ASM_ARITH_TAC) THEN
-     (* X13/Q21 bound: expand Q21 s29 then apply UADDLV *)
-     CHEAT_TAC;  (* val(read X13 s29) <= 8: needs structural fix *)
+     ASM_ARITH_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 + ADD + count accumulation + CMP *)
    ENSURES_INIT_TAC "s0" THEN
