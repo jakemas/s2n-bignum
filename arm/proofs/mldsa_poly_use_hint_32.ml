@@ -154,18 +154,6 @@ let WORD_2SMULH_NOSATURATE_32 = prove(
   [MATCH_MP_TAC DIV_MONO THEN ASM_ARITH_TAC;
    CONV_TAC NUM_REDUCE_CONV]);;
 
-let WORD_ISHR_ROUND_18 = prove(
-  `!t:int32. val t < 2147483648
-   ==> word_ishr_round t 18 = iword((&(val t) + &131072) div &262144)`,
-  GEN_TAC THEN DISCH_TAC THEN
-  REWRITE_TAC[word_ishr_round] THEN
-  CONV_TAC NUM_REDUCE_CONV THEN
-  CONV_TAC INT_REDUCE_CONV THEN
-  SUBGOAL_THEN `ival(t:int32) = &(val t)` SUBST1_TAC THENL
-  [SIMP_TAC[ival; DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV THEN
-   COND_CASES_TAC THEN ASM_ARITH_TAC;
-   REFL_TAC]);;
-
 let VAL_DECOMPOSE_A1 = prove(
   `!a:int32. val a < 8380417
    ==> val(word_ishr_round (word_2smulh a (word 1074791425:int32)) 18 : int32)
@@ -270,97 +258,9 @@ let A0_UPPER_32 = prove(
   [CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC; ALL_TAC] THEN
   ASM_ARITH_TAC);;
 
-let SPEC_NOWRAP_32 = prove(
-  `!a h. a <= 8118528
-   ==> mldsa_use_hint_32_spec a h =
-       (let nv = ((a + 127) DIV 128 * 1025 + 2097152) DIV 4194304 in
-        if h = 0 then nv
-        else if int_gt (&a - &nv * &523776) (&0)
-             then (nv + 1) MOD 16
-             else (nv + 15) MOD 16)`,
-  REPEAT GEN_TAC THEN DISCH_TAC THEN
-  REWRITE_TAC[mldsa_use_hint_32_spec] THEN
-  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-  ABBREV_TAC `nv = ((a + 127) DIV 128 * 1025 + 2097152) DIV 4194304` THEN
-  SUBGOAL_THEN `nv MOD 16 = nv` SUBST1_TAC THENL
-  [MATCH_MP_TAC MOD_LT THEN MP_TAC(SPEC `a:num` A1_BOUND_NOWRAP) THEN
-   ASM_REWRITE_TAC[] THEN EXPAND_TAC "nv" THEN ARITH_TAC; ALL_TAC] THEN
-  SUBGOAL_THEN `~(int_gt (&a - &nv * &523776) (&4190208))` ASSUME_TAC THENL
-  [REWRITE_TAC[INT_GT; INT_NOT_LT] THEN
-   MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LT; GSYM INT_OF_NUM_MUL;
-     GSYM INT_OF_NUM_ADD] (SPEC `a:num` A0_UPPER_32)) THEN
-   ASM_REWRITE_TAC[] THEN EXPAND_TAC "nv" THEN INT_ARITH_TAC; ALL_TAC] THEN
-  ASM_REWRITE_TAC[] THEN
-  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN
-  POP_ASSUM(fun p -> POP_ASSUM(fun np ->
-    CONTR_TAC(EQ_MP (EQF_INTRO np) p))));;
-
-let HINT_H1_POS = prove(
-  `!a1:int32. val a1 <= 15
-   ==> val(word_and (word_add a1 (word 1:int32)) (word 15:int32)) = (val a1 + 1) MOD 16`,
-  GEN_TAC THEN DISCH_TAC THEN
-  REWRITE_TAC[VAL_WORD_AND_15_32; VAL_WORD_ADD; VAL_WORD; DIMINDEX_32] THEN
-  CONV_TAC NUM_REDUCE_CONV THEN REWRITE_TAC[MOD_MOD_REFL] THEN
-  AP_THM_TAC THEN AP_TERM_TAC THEN MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
-
-let HINT_H1_NEG = prove(
-  `!a1:int32. val a1 <= 15
-   ==> val(word_and (word_add a1 (word 4294967295:int32)) (word 15:int32)) = (val a1 + 15) MOD 16`,
-  GEN_TAC THEN DISCH_TAC THEN
-  REWRITE_TAC[VAL_WORD_AND_15_32; VAL_WORD_ADD; VAL_WORD; DIMINDEX_32] THEN
-  CONV_TAC NUM_REDUCE_CONV THEN
-  REWRITE_TAC[ARITH_RULE `4294967296 = 2 EXP 32`; ARITH_RULE `16 = 2 EXP 4`] THEN
-  REWRITE_TAC[MOD_MOD_EXP_MIN] THEN CONV_TAC NUM_REDUCE_CONV THEN
-  REWRITE_TAC[ARITH_RULE `4294967295 = 15 + 268435455 * 16`; GSYM ADD_ASSOC] THEN
-  REWRITE_TAC[ARITH_RULE `a + 15 + 268435455 * 16 = (a + 15) + 268435455 * 16`] THEN
-  SIMP_TAC[MOD_MULT_ADD]);;
-
 let WORD_SUB_SIGN_32 = BITBLAST_RULE
   `!a:int32 b:int32. val b <= 7856640 /\ val a <= 8118528 ==>
    ((bit 31 (word_sub a b) \/ word_sub a b = word 0) <=> val a <= val b)`;;
-
-let WORD_AND_ONES_32 = prove(
-  `!x:int32. word_and x (word 4294967295) = x`,
-  GEN_TAC THEN
-  SUBGOAL_THEN `(word 4294967295 : int32) = word_not(word 0)` SUBST1_TAC THENL
-  [CONV_TAC WORD_REDUCE_CONV; REWRITE_TAC[WORD_AND_NOT0]]);;
-
-let WORD_MUL_1_32 = prove(
-  `!x:int32. word_mul x (word 1) = x`,
-  GEN_TAC THEN REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_MUL; VAL_WORD; DIMINDEX_32] THEN
-  CONV_TAC NUM_REDUCE_CONV THEN REWRITE_TAC[MULT_CLAUSES] THEN
-  MATCH_MP_TAC MOD_LT THEN MP_TAC(ISPEC `x:int32` VAL_BOUND) THEN
-  REWRITE_TAC[DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV);;
-
-let WORD_OR_NEG1_32 = prove(
-  `!x:int32. word_or (word_neg(word 1)) x = word_neg(word 1)`,
-  GEN_TAC THEN
-  SUBGOAL_THEN `word_neg(word 1:int32) = word_not(word 0)` SUBST1_TAC THENL
-  [CONV_TAC WORD_REDUCE_CONV; REWRITE_TAC[WORD_OR_NOT0]]);;
-
-let WORD_NEG1_VAL_32 = WORD_REDUCE_CONV `word_neg(word 1 : int32)`;;
-
-let REAL_INT_GT_BRIDGE = prove(
-  `!a:num b c. a <= b * c
-   ==> ~(real_gt (&a - &b * &c) (&0)) /\ ~(int_gt (&a - &b * &c) (&0))`,
-  REPEAT GEN_TAC THEN DISCH_TAC THEN CONJ_TAC THENL
-  [REWRITE_TAC[real_gt; REAL_NOT_LT] THEN
-   MP_TAC(REWRITE_RULE[GSYM REAL_OF_NUM_LE; GSYM REAL_OF_NUM_MUL]
-     (ASSUME `a <= b * c`)) THEN REAL_ARITH_TAC;
-   REWRITE_TAC[INT_GT; INT_NOT_LT] THEN
-   MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LE; GSYM INT_OF_NUM_MUL]
-     (ASSUME `a <= b * c`)) THEN INT_ARITH_TAC]);;
-
-let REAL_INT_GT_BRIDGE_POS = prove(
-  `!a:num b c. ~(a <= b * c)
-   ==> real_gt (&a - &b * &c) (&0) /\ int_gt (&a - &b * &c) (&0)`,
-  REPEAT GEN_TAC THEN REWRITE_TAC[NOT_LE] THEN DISCH_TAC THEN CONJ_TAC THENL
-  [REWRITE_TAC[real_gt] THEN
-   MP_TAC(REWRITE_RULE[GSYM REAL_OF_NUM_LT; GSYM REAL_OF_NUM_MUL]
-     (ASSUME `b * c < a`)) THEN REAL_ARITH_TAC;
-   REWRITE_TAC[INT_GT] THEN
-   MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LT; GSYM INT_OF_NUM_MUL]
-     (ASSUME `b * c < a`)) THEN INT_ARITH_TAC]);;
 
 let WRAP_A0_NEGATIVE = BITBLAST_RULE
   `!a:int32. val a < 8380417 /\ val a > 8118528
@@ -803,17 +703,6 @@ let BARRETT_EQUIV = prove(
 (* ========================================================================= *)
 (* Element-level functional correctness                                       *)
 (* ========================================================================= *)
-
-let SPEC_BOUND = prove(
-  `!a h. a < 8380417 /\ h <= 1
-   ==> mldsa_use_hint_32_spec a h <= 15`,
-  REPEAT GEN_TAC THEN STRIP_TAC THEN
-  REWRITE_TAC[mldsa_use_hint_32_spec; LET_DEF; LET_END_DEF] THEN
-  MP_TAC(SPEC `a:num` A1_BOUND) THEN ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
-  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN
-  TRY(MATCH_MP_TAC(ARITH_RULE `x MOD 16 < 16 ==> x MOD 16 <= 15`) THEN
-      REWRITE_TAC[MOD_LT_EQ] THEN ARITH_TAC) THEN
-  ASM_ARITH_TAC);;
 
 let ELEMENT_CORRECT = prove(
   `!a:int32 h:int32.

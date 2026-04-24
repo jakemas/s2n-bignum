@@ -1963,3 +1963,37 @@ let WORD_ILE_ZERO_32 = BITBLAST_RULE
 (* val(word_and x (word 15)) = val x MOD 16 *)
 let VAL_WORD_AND_15_32 = BITBLAST_RULE
   `!x:int32. val(word_and x (word 15:int32)) = val x MOD 16`;;
+
+(* word_and x all-ones = x *)
+let WORD_AND_ONES_32 = prove(
+  `!x:int32. word_and x (word 4294967295) = x`,
+  GEN_TAC THEN SUBGOAL_THEN `(word 4294967295 : int32) = word_not(word 0)` SUBST1_TAC THENL
+  [CONV_TAC WORD_REDUCE_CONV; REWRITE_TAC[WORD_AND_NOT0]]);;
+
+(* word_mul x 1 = x *)
+let WORD_MUL_1_32 = prove(
+  `!x:int32. word_mul x (word 1) = x`,
+  GEN_TAC THEN REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_MUL; VAL_WORD; DIMINDEX_32] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN REWRITE_TAC[MULT_CLAUSES] THEN
+  MATCH_MP_TAC MOD_LT THEN MP_TAC(ISPEC `x:int32` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV);;
+
+(* Bridge lemmas: derive both real_gt and int_gt from a single NUM fact.
+   Needed for native mode where real_gt and int_gt are distinct types. *)
+let REAL_INT_GT_BRIDGE = prove(
+  `!a:num b c. a <= b * c ==>
+   ~(real_gt (&a - &b * &c) (&0)) /\ ~(int_gt (&a - &b * &c) (&0))`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN CONJ_TAC THENL
+  [REWRITE_TAC[real_gt; REAL_NOT_LT] THEN
+   MP_TAC(REWRITE_RULE[GSYM REAL_OF_NUM_LE; GSYM REAL_OF_NUM_MUL] (ASSUME `a <= b * c`)) THEN REAL_ARITH_TAC;
+   REWRITE_TAC[INT_GT; INT_NOT_LT] THEN
+   MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LE; GSYM INT_OF_NUM_MUL] (ASSUME `a <= b * c`)) THEN INT_ARITH_TAC]);;
+
+let REAL_INT_GT_BRIDGE_POS = prove(
+  `!a:num b c. ~(a <= b * c) ==>
+   real_gt (&a - &b * &c) (&0) /\ int_gt (&a - &b * &c) (&0)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[NOT_LE] THEN DISCH_TAC THEN CONJ_TAC THENL
+  [REWRITE_TAC[real_gt] THEN
+   MP_TAC(REWRITE_RULE[GSYM REAL_OF_NUM_LT; GSYM REAL_OF_NUM_MUL] (ASSUME `b * c < a`)) THEN REAL_ARITH_TAC;
+   REWRITE_TAC[INT_GT] THEN
+   MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LT; GSYM INT_OF_NUM_MUL] (ASSUME `b * c < a`)) THEN INT_ARITH_TAC]);;
