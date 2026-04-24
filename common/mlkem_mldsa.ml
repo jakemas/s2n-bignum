@@ -764,7 +764,7 @@ let Q_MUL_COMM = WORD_RULE
 (* Normalization rules for VPSRLQ/VMOVSHDUP patterns *)
 let USHR32_SUBWORD = WORD_BLAST
  `word_subword (word_ushr (x:int64) 32) (0,32):int32 = word_subword x (32,32)`;;
- 
+
 let DUP32_SUBWORD = WORD_BLAST
  `word_subword (word_duplicate (word_subword (x:int64) (32,32):int32):int64) (0,32):int32
   = word_subword x (32,32)`;;
@@ -794,6 +794,19 @@ let IVAL_WORD_MUL_SX32_64 = prove(
 
 (* Merge 4 x bytes32 into bytes128 at a given base+offset *)
 let MEMORY_128_FROM_32_TAC =
+  let a_tm = `a:int64` and n_tm = `n:num` and i64_ty = `:int64`
+  and pat = `read (memory :> bytes128(word_add a (word n))) s0` in
+  fun v boff n ->
+    let pat' = subst[mk_var(v,i64_ty),a_tm] pat in
+    let f i =
+      let itm = mk_small_numeral(boff + 16*i) in
+      READ_MEMORY_MERGE_CONV 2 (subst[itm,n_tm] pat') in
+    MP_TAC(end_itlist CONJ (map f (0--(n-1))));;
+
+(* ML-DSA use_hint Merge 4 x bytes32 into bytes128 at a given base+offset    *)
+(* ------------------------------------------------------------------------- *)
+
+let USE_HINT_MEMORY_128_FROM_32_TAC =
   let a_tm = `a:int64` and n_tm = `n:num` and i64_ty = `:int64`
   and pat = `read (memory :> bytes128(word_add a (word n))) s0` in
   fun v boff n ->
@@ -1881,3 +1894,38 @@ let SIMD_SIMPLIFY_ABBREV_TAC =
       let tms = sort free_in (find_terms pam (rand(concl th''))) in
       (MP_TAC th'' THEN MAP_EVERY AUTO_ABBREV_TAC tms THEN DISCH_TAC) (asl,w) in
   TRY(FIRST_X_ASSUM(ttac o check (simdable o concl)));;
+(* ML-DSA use_hint shared infrastructure lemmas                              *)
+(* Used by both poly_use_hint_32 and poly_use_hint_88 proofs                 *)
+(* ========================================================================= *)
+
+(* ival equals val for values in [0, Q) where Q = 8380417 < 2^31 *)
+let MLDSA_IVAL_VAL = prove(
+  `!a:int32. val a < 8380417 ==> ival a = &(val a)`,
+  GEN_TAC THEN DISCH_TAC THEN
+  SIMP_TAC[ival; DIMINDEX_32] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  COND_CASES_TAC THEN ASM_ARITH_TAC);;
+
+(* For natural numbers, &n is never < -2^31 *)
+let INT_POS_NEG_BOUND = prove(`!n. ~((&n:int) < --(&2147483648))`,
+  GEN_TAC THEN REWRITE_TAC[INT_NOT_LT] THEN
+  MP_TAC(SPEC `n:num` INT_POS) THEN INT_ARITH_TAC);;
+
+(* val(iword(&n)) = n for n < 2^31 *)
+let VAL_IWORD_NUM_32 = prove(
+  `!n. n < 2147483648 ==> val(iword(&n):int32) = n`,
+  GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(ISPECL [`&n:int`] (INST_TYPE [`:32`,`:N`] INT_VAL_IWORD)) THEN
+  REWRITE_TAC[DIMINDEX_32; INT_POS] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  ANTS_TAC THENL
+  [REWRITE_TAC[INT_OF_NUM_LT] THEN ASM_ARITH_TAC;
+   REWRITE_TAC[INT_OF_NUM_EQ] THEN SIMP_TAC[]]);;
+
+(* word_ile x 0 in terms of bit 31 (signed non-positive check) *)
+let WORD_ILE_ZERO_32 = BITBLAST_RULE
+  `!x:int32. word_ile x (word 0) <=> bit 31 x \/ x = word 0`;;
+
+(* val(word_and x (word 15)) = val x MOD 16 *)
+let VAL_WORD_AND_15_32 = BITBLAST_RULE
+  `!x:int32. val(word_and x (word 15:int32)) = val x MOD 16`;;
