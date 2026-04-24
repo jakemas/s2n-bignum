@@ -87,7 +87,7 @@ let mldsa_poly_use_hint_32_mc = define_assert_from_elf
   0xd65f03c0        (* arm_RET X30 *)
 ];;
 
-let MLDSA_USE_HINT_EXEC = ARM_MK_EXEC_RULE mldsa_poly_use_hint_32_mc;;
+let MLDSA_USE_HINT_32_EXEC = ARM_MK_EXEC_RULE mldsa_poly_use_hint_32_mc;;
 
 (* ========================================================================= *)
 (* Functional specification: UseHint for ML-DSA parameter sets 65/87         *)
@@ -422,7 +422,7 @@ let ELEMENT_CORRECT_WORD = prove(
 (* Correctness proof (output bounds)                                          *)
 (* ========================================================================= *)
 
-let MLDSA_USE_HINT_CORRECT = prove
+let MLDSA_USE_HINT_32_CORRECT = prove
  (`!b a h x y pc.
     nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_32_mc) (b, 1024) /\
     nonoverlapping (b, 1024) (a, 1024) /\
@@ -450,7 +450,7 @@ let MLDSA_USE_HINT_CORRECT = prove
      `x:num->int32`; `y:num->int32`; `pc:num`] THEN
   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; C_ARGUMENTS;
               NONOVERLAPPING_CLAUSES; ALL;
-              fst MLDSA_USE_HINT_EXEC] THEN
+              fst MLDSA_USE_HINT_32_EXEC] THEN
   DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
   GLOBALIZE_PRECONDITION_TAC THEN
   CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
@@ -469,7 +469,7 @@ let MLDSA_USE_HINT_CORRECT = prove
   DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes32 a) s = x`] THEN
 
   (* Simulate 878 instructions (excluding RET) *)
-  MAP_EVERY (fun n -> ARM_STEPS_TAC MLDSA_USE_HINT_EXEC [n] THEN
+  MAP_EVERY (fun n -> ARM_STEPS_TAC MLDSA_USE_HINT_32_EXEC [n] THEN
                       SIMD_SIMPLIFY_TAC[])
         (1--878) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -514,7 +514,7 @@ let MLDSA_USE_HINT_CORRECT = prove
 (* Subroutine form                                                           *)
 (* ========================================================================= *)
 
-let MLDSA_USE_HINT_SUBROUTINE_CORRECT = prove
+let MLDSA_USE_HINT_32_SUBROUTINE_CORRECT = prove
  (`!b a h x y pc returnaddress.
     nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_32_mc) (b, 1024) /\
     nonoverlapping (b, 1024) (a, 1024) /\
@@ -536,10 +536,10 @@ let MLDSA_USE_HINT_SUBROUTINE_CORRECT = prove
                  word(mldsa_use_hint_32_spec (val(x i)) (val(y i)))))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
            MAYCHANGE [memory :> bytes(b, 1024)])`,
-  REWRITE_TAC[fst MLDSA_USE_HINT_EXEC] THEN
-  ARM_ADD_RETURN_NOSTACK_TAC MLDSA_USE_HINT_EXEC
-    (REWRITE_RULE[fst MLDSA_USE_HINT_EXEC]
-       MLDSA_USE_HINT_CORRECT));;
+  REWRITE_TAC[fst MLDSA_USE_HINT_32_EXEC] THEN
+  ARM_ADD_RETURN_NOSTACK_TAC MLDSA_USE_HINT_32_EXEC
+    (REWRITE_RULE[fst MLDSA_USE_HINT_32_EXEC]
+       MLDSA_USE_HINT_32_CORRECT));;
 
 
 (* ========================================================================= *)
@@ -553,10 +553,10 @@ needs "arm/proofs/subroutine_signatures.ml";;
 let full_spec,public_vars = mk_safety_spec
     ~keep_maychanges:false
     (assoc "mldsa_poly_use_hint_32" subroutine_signatures)
-    MLDSA_USE_HINT_SUBROUTINE_CORRECT
-    MLDSA_USE_HINT_EXEC;;
+    MLDSA_USE_HINT_32_SUBROUTINE_CORRECT
+    MLDSA_USE_HINT_32_EXEC;;
 
-let MLDSA_USE_HINT_SUBROUTINE_SAFE = time prove
+let MLDSA_USE_HINT_32_SUBROUTINE_SAFE = time prove
  (`exists f_events.
        forall e b a h pc returnaddress.
            nonoverlapping (word pc,LENGTH mldsa_poly_use_hint_32_mc) (b,1024) /\
@@ -579,4 +579,4 @@ let MLDSA_USE_HINT_SUBROUTINE_SAFE = time prove
                          [b,1024]))
                (\s s'. true)`,
   ASSERT_CONCL_TAC full_spec THEN
-  PROVE_SAFETY_SPEC_TAC ~public_vars:public_vars MLDSA_USE_HINT_EXEC);;
+  PROVE_SAFETY_SPEC_TAC ~public_vars:public_vars MLDSA_USE_HINT_32_EXEC);;
