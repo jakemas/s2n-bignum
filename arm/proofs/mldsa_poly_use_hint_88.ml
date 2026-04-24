@@ -156,18 +156,6 @@ let WORD_2SMULH_NOSATURATE_88 = prove(
   [MATCH_MP_TAC DIV_MONO THEN ASM_ARITH_TAC;
    CONV_TAC NUM_REDUCE_CONV]);;
 
-let WORD_ISHR_ROUND_17 = prove(
-  `!t:int32. val t < 2147483648
-   ==> word_ishr_round t 17 = iword((&(val t) + &65536) div &131072)`,
-  GEN_TAC THEN DISCH_TAC THEN
-  REWRITE_TAC[word_ishr_round] THEN
-  CONV_TAC NUM_REDUCE_CONV THEN
-  CONV_TAC INT_REDUCE_CONV THEN
-  SUBGOAL_THEN `ival(t:int32) = &(val t)` SUBST1_TAC THENL
-  [SIMP_TAC[ival; DIMINDEX_32] THEN CONV_TAC NUM_REDUCE_CONV THEN
-   COND_CASES_TAC THEN ASM_ARITH_TAC;
-   REFL_TAC]);;
-
 let VAL_DECOMPOSE_A1_88 = prove(
   `!a:int32. val a < 8380417
    ==> val(word_ishr_round (word_2smulh a (word 1477838209:int32)) 17 : int32)
@@ -1366,14 +1354,6 @@ let BARRETT_EQUIV_88 = prove(
   ASM_ARITH_TAC
   ]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]);;
 
-
-let SPEC_BOUND_88 = prove(
-  `!a h. a < 8380417 /\ h <= 1
-   ==> mldsa_use_hint_88_spec a h <= 43`,
-  REPEAT GEN_TAC THEN STRIP_TAC THEN
-  REWRITE_TAC[mldsa_use_hint_88_spec; LET_DEF; LET_END_DEF] THEN
-  MP_TAC(SPEC `a:num` A1_BOUND_88) THEN ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
-  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN ASM_ARITH_TAC);;
 
 let WORD_SUB_SIGN_88 = BITBLAST_RULE
   `!a:int32 b:int32. val b <= 8189952 /\ val a <= 8285184 ==>
