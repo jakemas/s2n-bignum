@@ -557,5 +557,33 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
      UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
-   (* post-loop *)
-   CHEAT_TAC]);;  (* post-loop *)
+   (* post-loop: CMP X2,(word 8) + BCS(not taken) to pc+0x100 *)
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   ENSURES_INIT_TAC "s0" THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   (* The BCS condition: need ~(8 <= val(word_sub(word buflen)(word(8*N)))) *)
+   (* This means buflen < 8*(N+1), which follows from the WOP choice of N *)
+   (* post-loop: CMP X2,(word 8) + BCS. Case split on buffer remaining *)
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   ASM_CASES_TAC `buflen < 8 * (N + 1)` THENL
+    [(* Buffer exhausted: BCS not taken *)
+     SUBGOAL_THEN `8 * N <= buflen /\ 8 * N < 2 EXP 64` STRIP_ASSUME_TAC THENL
+      [CONJ_TAC THENL
+        [MATCH_MP_TAC EIGHT_N_LE_BUFLEN THEN ASM_REWRITE_TAC[];
+         MP_TAC(SPEC `SUB_LIST(0,8*N) inlist:byte list` LENGTH_REJ_NIBBLES_ETA4) THEN
+         REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC]; ALL_TAC] THEN
+     SUBGOAL_THEN `~(8 <= val(word_sub (word buflen:int64) (word(8 * N))))`
+     ASSUME_TAC THENL
+      [VAL_INT64_TAC `8 * N` THEN
+       ASM_REWRITE_TAC[VAL_WORD_SUB_CASES; NOT_LE] THEN ASM_ARITH_TAC;
+       ALL_TAC] THEN
+     ENSURES_INIT_TAC "s0" THEN
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+     EXISTS_TAC `N:num` THEN
+     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+     MP_TAC(SPEC `SUB_LIST(0,8*N) inlist:byte list` LENGTH_REJ_NIBBLES_ETA4) THEN
+     REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+     (* Buffer NOT exhausted: need ENSURES_TRANS to extra loop iterations *)
+     CHEAT_TAC]]);;  (* post-loop niblen case *)
