@@ -6,17 +6,13 @@
 (*                                                                           *)
 (* Remaining CHEATs:                                                        *)
 (*                                                                           *)
-(* PROVED: val(X12) <= 8 /\ val(X13) <= 8 from SIMD popcount.             *)
-(*   Verbose steps 14-15 (AND v4/v5,Q31) + existential ?y.Q4=AND(y,Q31)   *)
-(*   + verbose steps 22-27 (CNT+UADDLV+FMOV) chain propagation.           *)
-(*   Bound proved by WORD_SUBWORD_AND + POPCOUNT_AND_POWERS + ARITH_TAC.   *)
-(*                                                                           *)
 (* CHEAT 1: Loop body postcondition — connecting register state to          *)
 (*   REJ_NIBBLES_ETA4(SUB_LIST(0,8*(i+1)) inlist) specification.           *)
 (*                                                                           *)
-(* CHEAT 2: Writeback phase — 181 ARM steps, needs BIGNUM_LDIGITIZE_TAC.   *)
+(* CHEAT 2: Writeback phase — CMP X9,X4 + CSEL + writeback loop.           *)
 (*                                                                           *)
-(* Pre-loop init, loop body stepping, back-edge, post-loop: FULLY PROVED.  *)
+(* PROVED: Pre-loop init, SIMD popcount bounds, back-edge, post-loop.       *)
+(* Post-loop uses buflen DIV 8 loop count: BCS deterministically not taken. *)
 (* ========================================================================= *)
 
 needs "arm/proofs/base.ml";;
@@ -382,41 +378,30 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
   [`table:int64`; `inlist:byte list`; `pc:num`; `stackpointer:int64`] THEN
  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
 
- (* === Split: computation (pc+4 to pc+0x100) and writeback (to pc+0x150) *)
- ENSURES_SEQUENCE_TAC `pc + 0x100`
+ (* === Split: computation (pc+4 to pc+256) and writeback (to pc+336) === *)
+ (* Intermediate postcondition at pc+256 (CMP X9,X4 instruction) tracks   *)
+ (* REJ_NIBBLES_ETA4(inlist) directly -- no existential, no niblen bound. *)
+ (* Loop uses buflen DIV 8 iterations: exhausts entire buffer, BCS        *)
+ (* deterministically not taken after last iteration.                      *)
+ ENSURES_SEQUENCE_TAC `pc + 256`
   `\s. aligned_bytes_loaded s (word pc) mldsa_rej_uniform_eta4_mc /\
-       read PC s = word(pc + 0x100) /\
+       read PC s = word(pc + 256) /\
        read X0 s = res /\ read X4 s = word 256 /\
        read X8 s = stackpointer /\
        read Q7 s = word 20769504351625144638033088116686852 /\
        ALL (nonoverlapping (res,1024)) [(word pc,344); (stackpointer,576)] /\
-       ?n. let niblist = REJ_NIBBLES_ETA4 (SUB_LIST (0,8 * n) inlist) in
-           let niblen = LENGTH niblist in
-           niblen < 272 /\ read X9 s = word niblen /\
-           (buflen < 8 * (n + 1) \/ 256 <= niblen) /\
-           read (memory :> bytes (stackpointer,2 * niblen)) s =
-           num_of_wordlist niblist` THEN
- CONJ_TAC THENL [ALL_TAC; CHEAT_TAC] THEN  (* CHEAT 4: Writeback *)
+       let niblist = REJ_NIBBLES_ETA4 inlist in
+       let niblen = LENGTH niblist in
+       read X9 s = word niblen /\
+       read (memory :> bytes (stackpointer,2 * niblen)) s =
+       num_of_wordlist niblist` THEN
+ CONJ_TAC THENL [ALL_TAC; CHEAT_TAC] THEN  (* CHEAT: Writeback *)
 
- (* === WOP + 0 < N === *)
- SUBGOAL_THEN
-  `?i. buflen < 8 * (i + 1) \/
-       256 <= LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8 * i) inlist))`
- MP_TAC THENL
-  [EXISTS_TAC `buflen:num` THEN ARITH_TAC;
-   GEN_REWRITE_TAC LAND_CONV [num_WOP]] THEN
- DISCH_THEN(X_CHOOSE_THEN `N:num` (CONJUNCTS_THEN2 ASSUME_TAC MP_TAC)) THEN
- REWRITE_TAC[DE_MORGAN_THM; NOT_LE] THEN STRIP_TAC THEN
- SUBGOAL_THEN `0 < N` ASSUME_TAC THENL
-  [REWRITE_TAC[ARITH_RULE `0 < N <=> ~(N = 0)`] THEN
-   DISCH_THEN SUBST_ALL_TAC THEN
-   FIRST_X_ASSUM(MP_TAC o check (is_disj o concl)) THEN
-   REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES;
-               SUB_LIST_CLAUSES; REJ_NIBBLES_ETA4_EMPTY; LENGTH] THEN
-   UNDISCH_TAC `8 <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+ (* === Loop with buflen DIV 8 iterations === *)
+ SUBGOAL_THEN `0 < buflen DIV 8` ASSUME_TAC THENL
+  [MP_TAC(ASSUME `8 <= buflen`) THEN ARITH_TAC; ALL_TAC] THEN
 
- (* === Main loop === *)
- ENSURES_WHILE_UP_TAC `N:num` `pc + 0x6c` `pc + 0xf8`
+ ENSURES_WHILE_UP_TAC `buflen DIV 8` `pc + 108` `pc + 248`
   `\i s. read (memory :> bytes (table,4096)) s =
          num_of_wordlist mldsa_rej_uniform_eta_table /\
          read (memory :> bytes (buf,buflen)) s = num_of_wordlist inlist /\
@@ -435,11 +420,10 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read (memory :> bytes (stackpointer,2 * niblen)) s =
          num_of_wordlist niblist` THEN
  REPEAT CONJ_TAC THENL
-  [(*** ~(N=0) — PROVED ***) ASM_ARITH_TAC;
+  [(*** Subgoal 1: 0 < buflen DIV 8 ***)
+   ASM_ARITH_TAC;
 
-   (*** Pre-loop init (75 ARM steps) — PROVED ***)
-   FIRST_X_ASSUM(MP_TAC o SPEC `0`) THEN
-   ASM_REWRITE_TAC[ADD_CLAUSES; MULT_CLAUSES] THEN STRIP_TAC THEN
+   (*** Subgoal 2: Pre-loop init (75 ARM steps) ***)
    GHOST_INTRO_TAC `q31_init:int128` `read Q31` THEN
    ENSURES_INIT_TAC "s0" THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--75) THEN
@@ -450,17 +434,13 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    REWRITE_TAC[MULT_CLAUSES; WORD_ADD_0; WORD_SUB_0] THEN
    REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL; num_of_wordlist];
 
-   (*** Loop body — split at pc+0xD8 for ST1 stores ***)
+   (*** Subgoal 3: Loop body — split at pc+0xD8 for ST1 stores ***)
    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
    ABBREV_TAC `curlist = REJ_NIBBLES_ETA4(SUB_LIST(0,8 * i) inlist)` THEN
    ABBREV_TAC `curlen = LENGTH(curlist:int16 list)` THEN
    CONV_TAC(RATOR_CONV(LAND_CONV(TOP_DEPTH_CONV let_CONV))) THEN
    ASM_REWRITE_TAC[] THEN
-   FIRST_X_ASSUM(MP_TAC o C MATCH_MP (ASSUME `i:num < N`)) THEN
-   REWRITE_TAC[DE_MORGAN_THM; NOT_LE; NOT_LT] THEN STRIP_TAC THEN
-   SUBGOAL_THEN `curlen < 256` ASSUME_TAC THENL
-    [EXPAND_TAC "curlen" THEN EXPAND_TAC "curlist" THEN
-     ASM_REWRITE_TAC[]; ALL_TAC] THEN
+   ENSURES_INIT_TAC "s0" THEN
    (* Split loop body: first half = SIMD compute, second half = stores *)
    ENSURES_SEQUENCE_TAC `pc + 0xe0`
     `\s. read (memory :> bytes (table,4096)) s =
@@ -541,49 +521,42 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (5--6) THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-   CHEAT_TAC;  (* postcondition: loop invariant at i+1 *)
-   (* back-edge: CMP X2,(word 8) + BCS back to pc+0x6c *)
+   CHEAT_TAC;  (* CHEAT: postcondition: loop invariant at i+1 *)
+
+   (*** Subgoal 4: Back edge — 2 ARM steps from pc+248 to pc+108 ***)
    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
-   FIRST_X_ASSUM(MP_TAC o C MATCH_MP (ASSUME `i:num < N`)) THEN
-   REWRITE_TAC[DE_MORGAN_THM; NOT_LT] THEN STRIP_TAC THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
    ENSURES_INIT_TAC "s0" THEN
    SUBGOAL_THEN `8 <= val(word_sub (word buflen:int64) (word(8 * i)))`
    ASSUME_TAC THENL
-    [SUBGOAL_THEN `8 * i < 2 EXP 64` ASSUME_TAC THENL
+    [SUBGOAL_THEN `8 * (i + 1) <= buflen` ASSUME_TAC THENL
+      [MP_TAC(ASSUME `8 divides buflen`) THEN
+       REWRITE_TAC[DIVIDES_DIV_MULT] THEN
+       UNDISCH_TAC `i < buflen DIV 8` THEN ARITH_TAC; ALL_TAC] THEN
+     SUBGOAL_THEN `8 * i < 2 EXP 64` ASSUME_TAC THENL
       [UNDISCH_TAC `buflen < 2 EXP 64` THEN
        UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
      VAL_INT64_TAC `8 * i` THEN ASM_REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
      UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
-   (* post-loop: CMP X2,(word 8) + BCS(not taken) to pc+0x100 *)
+
+   (*** Subgoal 5: Post-loop exit — from pc+248 to pc+256 ***)
+   (*** After buflen DIV 8 iterations, remaining = 0, BCS not taken ***)
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   SUBGOAL_THEN `8 * buflen DIV 8 = buflen`
+     (fun th -> REWRITE_TAC[th]) THENL
+    [MP_TAC(ASSUME `8 divides buflen`) THEN
+     REWRITE_TAC[DIVIDES_DIV_MULT] THEN ARITH_TAC; ALL_TAC] THEN
+   SUBGOAL_THEN `SUB_LIST(0,buflen) inlist = inlist:byte list`
+     (fun th -> REWRITE_TAC[th]) THENL
+    [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[LE_REFL];
+     ALL_TAC] THEN
+   SUBGOAL_THEN
+    `~(8 <= val(word_sub (word buflen:int64) (word buflen)))`
+   ASSUME_TAC THENL
+    [REWRITE_TAC[WORD_SUB_REFL; VAL_WORD_0] THEN ARITH_TAC;
+     ALL_TAC] THEN
    ENSURES_INIT_TAC "s0" THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
-   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-   (* The BCS condition: need ~(8 <= val(word_sub(word buflen)(word(8*N)))) *)
-   (* This means buflen < 8*(N+1), which follows from the WOP choice of N *)
-   (* post-loop: CMP X2,(word 8) + BCS. Case split on buffer remaining *)
-   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-   ASM_CASES_TAC `buflen < 8 * (N + 1)` THENL
-    [(* Buffer exhausted: BCS not taken *)
-     SUBGOAL_THEN `8 * N <= buflen /\ 8 * N < 2 EXP 64` STRIP_ASSUME_TAC THENL
-      [CONJ_TAC THENL
-        [MATCH_MP_TAC EIGHT_N_LE_BUFLEN THEN ASM_REWRITE_TAC[];
-         MP_TAC(SPEC `SUB_LIST(0,8*N) inlist:byte list` LENGTH_REJ_NIBBLES_ETA4) THEN
-         REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC]; ALL_TAC] THEN
-     SUBGOAL_THEN `~(8 <= val(word_sub (word buflen:int64) (word(8 * N))))`
-     ASSUME_TAC THENL
-      [VAL_INT64_TAC `8 * N` THEN
-       ASM_REWRITE_TAC[VAL_WORD_SUB_CASES; NOT_LE] THEN ASM_ARITH_TAC;
-       ALL_TAC] THEN
-     ENSURES_INIT_TAC "s0" THEN
-     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
-     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-     EXISTS_TAC `N:num` THEN
-     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
-     MP_TAC(SPEC `SUB_LIST(0,8*N) inlist:byte list` LENGTH_REJ_NIBBLES_ETA4) THEN
-     REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
-     (* Buffer NOT exhausted: need ENSURES_TRANS to extra loop iterations *)
-     CHEAT_TAC]]);;  (* post-loop niblen case *)
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[ALL]]);;
