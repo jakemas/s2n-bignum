@@ -384,6 +384,119 @@ let SSHLL_UPPER = BITBLAST_RULE
    (word_join (word_sx (word_subword q (80,16):int16):int32)
               (word_sx (word_subword q (64,16):int16):int32):int64):int128`;;
 
+(* Per-iteration writeback block identities: the ARM output bytes128       *)
+(* (with packed SUB vector + word_sx extraction) equals the clean form      *)
+(* with direct word_sx(word_sub(word 4)(word_subword q (k,16))).            *)
+(* These reduce the 366K-char ARM output to 47K chars after rewriting.      *)
+
+let WB_BLOCK_LO = BITBLAST_RULE
+ `word_join (word_join
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword (q:int128) (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (48,16):int16):int32)
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (32,16):int16):int32):int64)
+   (word_join
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (16,16):int16):int32)
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (0,16):int16):int32):int64):int128
+  = word_join
+     (word_join (word_sx(word_sub (word 4:int16) (word_subword q (48,16):int16)):int32)
+                (word_sx(word_sub (word 4:int16) (word_subword q (32,16):int16)):int32):int64)
+     (word_join (word_sx(word_sub (word 4:int16) (word_subword q (16,16):int16)):int32)
+                (word_sx(word_sub (word 4:int16) (word_subword q (0,16):int16)):int32):int64)
+     :int128`;;
+
+let WB_BLOCK_HI = BITBLAST_RULE
+ `word_join (word_join
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword (q:int128) (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (112,16):int16):int32)
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (96,16):int16):int32):int64)
+   (word_join
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (80,16):int16):int32)
+    (word_sx (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword q (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword q (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword q (0,16):int16):int16):int32):int64)
+     :int128) (64,16):int16):int32):int64):int128
+  = word_join
+     (word_join (word_sx(word_sub (word 4:int16) (word_subword q (112,16):int16)):int32)
+                (word_sx(word_sub (word 4:int16) (word_subword q (96,16):int16)):int32):int64)
+     (word_join (word_sx(word_sub (word 4:int16) (word_subword q (80,16):int16)):int32)
+                (word_sx(word_sub (word 4:int16) (word_subword q (64,16):int16)):int32):int64)
+     :int128`;;
+
 (* ========================================================================= *)
 (* The proof (interactive g/e style).                                        *)
 (* Run each e(...) in sequence in a HOL Light session with the checkpoint.   *)
