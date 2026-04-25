@@ -1,18 +1,19 @@
 (* ========================================================================= *)
 (* Proof of mldsa_rej_uniform_eta4 correctness (WIP)                        *)
 (*                                                                           *)
-(* ARM stepping is fully working including both ST1 stores in loop body.    *)
-(* SIMD simplification chain exposes the popcount structure.                *)
+(* PROVED: Pre-loop init (75 ARM steps), back-edge (2 steps),               *)
+(*   post-loop exit (2 steps), writeback X0 return value (245 ARM steps).   *)
 (*                                                                           *)
 (* Remaining CHEATs:                                                        *)
 (*                                                                           *)
-(* CHEAT 1: Loop body postcondition — connecting register state to          *)
-(*   REJ_NIBBLES_ETA4(SUB_LIST(0,8*(i+1)) inlist) specification.           *)
+(* CHEAT 1: Loop body postcondition — connecting TBL shuffle + SIMD state   *)
+(*   to REJ_NIBBLES_ETA4(SUB_LIST(0,8*(i+1)) inlist) specification.        *)
+(*   Needs: LIST_EQ + EXPAND_CASES_CONV for TBL table correctness.         *)
 (*                                                                           *)
-(* CHEAT 2: Writeback phase — CMP X9,X4 + CSEL + writeback loop.           *)
-(*                                                                           *)
-(* PROVED: Pre-loop init, SIMD popcount bounds, back-edge, post-loop.       *)
-(* Post-loop uses buflen DIV 8 loop count: BCS deterministically not taken. *)
+(* CHEAT 2: Writeback memory content — connecting ARM SUB+SSHLL output     *)
+(*   to num_of_wordlist(SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist)).           *)
+(*   Key lemmas proved: WORD_SX_SUB4_SMALL (BITBLAST_RULE),                *)
+(*   SSHLL_LOWER/UPPER, SUB_LIST_MAP, ALL_REJ_NIBBLES_ETA4.               *)
 (* ========================================================================= *)
 
 needs "arm/proofs/base.ml";;
@@ -328,6 +329,61 @@ let CNT_UADDLV_BOUND = prove(
  MAP_EVERY (fun th -> MP_TAC(SPEC `y:int128` th)) CNT_HW_BOUNDS THEN
  ARITH_TAC);;
 
+(* Writeback lemmas: word_sx(word_sub(word 4) x) = word_sub(word 4)(word_zx x) *)
+(* for nibbles with val < 9 (the only values produced by REJ_NIBBLES_ETA4).   *)
+
+let WORD_SX_SUB4_SMALL = BITBLAST_RULE
+  `val(x:int16) < 9
+   ==> word_sx(word_sub (word 4:int16) x):int32 =
+       word_sub (word 4) (word_zx x)`;;
+
+let ALL_REJ_NIBBLES_ETA4 = prove(
+  `!l. ALL (\x. val(x:int16) < 9) (REJ_NIBBLES_ETA4 l)`,
+  GEN_TAC THEN REWRITE_TAC[REJ_NIBBLES_ETA4; GSYM ALL_MEM; MEM_FILTER] THEN
+  SIMP_TAC[]);;
+
+let SUB_LIST_MAP = prove(
+  `!f (l:A list) n.
+     SUB_LIST(0,n)(MAP f l) = MAP f (SUB_LIST(0,n) l):B list`,
+  GEN_TAC THEN LIST_INDUCT_TAC THEN INDUCT_TAC THEN
+  ASM_REWRITE_TAC[MAP; SUB_LIST_CLAUSES]);;
+
+let SSHLL_LOWER = BITBLAST_RULE
+  `word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword (q:int128) (0,64):int64)
+                                     (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword q (0,64):int64)
+                                     (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword q (0,64):int64)
+                                     (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword q (0,64):int64)
+                                     (0,16):int16):int32) 0):int64):int128 =
+   word_join
+   (word_join (word_sx (word_subword q (48,16):int16):int32)
+              (word_sx (word_subword q (32,16):int16):int32):int64)
+   (word_join (word_sx (word_subword q (16,16):int16):int32)
+              (word_sx (word_subword q (0,16):int16):int32):int64):int128`;;
+
+let SSHLL_UPPER = BITBLAST_RULE
+  `word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword (q:int128) (64,64):int64)
+                                     (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword q (64,64):int64)
+                                     (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword q (64,64):int64)
+                                     (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword q (64,64):int64)
+                                     (0,16):int16):int32) 0):int64):int128 =
+   word_join
+   (word_join (word_sx (word_subword q (112,16):int16):int32)
+              (word_sx (word_subword q (96,16):int16):int32):int64)
+   (word_join (word_sx (word_subword q (80,16):int16):int32)
+              (word_sx (word_subword q (64,16):int16):int32):int64):int128`;;
+
 (* ========================================================================= *)
 (* The proof (interactive g/e style).                                        *)
 (* Run each e(...) in sequence in a HOL Light session with the checkpoint.   *)
@@ -395,7 +451,34 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
        read X9 s = word niblen /\
        read (memory :> bytes (stackpointer,2 * niblen)) s =
        num_of_wordlist niblist` THEN
- CONJ_TAC THENL [ALL_TAC; CHEAT_TAC] THEN  (* CHEAT: Writeback *)
+ CONJ_TAC THENL
+  [ALL_TAC;
+
+   (*** Writeback phase: pc+256 to pc+336 ***)
+   (*** Unroll the writeback loop: 245 ARM steps ***)
+   ENSURES_INIT_TAC "s0" THEN
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   ABBREV_TAC `niblist = REJ_NIBBLES_ETA4 (inlist:byte list):int16 list` THEN
+   ABBREV_TAC `niblen = LENGTH(niblist:int16 list)` THEN
+   DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+   VAL_INT64_TAC `niblen:num` THEN
+   BIGNUM_LDIGITIZE_TAC "b_"
+     `read (memory :> bytes(stackpointer,8 * 64)) s0` THEN
+   MEMORY_128_FROM_64_TAC "stackpointer" 0 32 THEN
+   ASM_REWRITE_TAC[WORD_ADD_0] THEN STRIP_TAC THEN
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--245) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   SUBGOAL_THEN `LENGTH(REJ_SAMPLE_ETA4 inlist:int32 list) = niblen`
+   ASSUME_TAC THENL
+    [REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN
+     FIRST_X_ASSUM(fun th -> REWRITE_TAC[SYM th]) THEN
+     ASM_REWRITE_TAC[]; ALL_TAC] THEN
+   ASM_REWRITE_TAC[LENGTH_SUB_LIST; SUB_0] THEN
+   GEN_REWRITE_TAC (LAND_CONV o LAND_CONV) [GSYM COND_RAND] THEN
+   REWRITE_TAC[ARITH_RULE `(if l < p then l else p) = MIN p l`] THEN
+   CONJ_TAC THENL [REFL_TAC; ALL_TAC] THEN
+   CHEAT_TAC] THEN  (* CHEAT: writeback memory content *)
 
  (* === Loop with buflen DIV 8 iterations === *)
  SUBGOAL_THEN `0 < buflen DIV 8` ASSUME_TAC THENL
