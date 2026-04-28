@@ -686,11 +686,24 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    CONJ_TAC THENL [REFL_TAC; ALL_TAC] THEN
    CHEAT_TAC] THEN  (* CHEAT: writeback memory content *)
 
- (* === Loop with buflen DIV 8 iterations === *)
- SUBGOAL_THEN `0 < buflen DIV 8` ASSUME_TAC THENL
-  [MP_TAC(ASSUME `8 <= buflen`) THEN ARITH_TAC; ALL_TAC] THEN
+ (* === WOP: find smallest N where loop exits === *)
+ (* N is the first iteration where either buffer exhausted or 256 samples *)
+ SUBGOAL_THEN
+  `?N. buflen < 8 * (N + 1) \/
+       256 <= LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8*N) inlist):int16 list)`
+ MP_TAC THENL
+  [EXISTS_TAC `buflen:num` THEN DISJ1_TAC THEN ARITH_TAC;
+   GEN_REWRITE_TAC LAND_CONV [num_WOP]] THEN
+ DISCH_THEN(X_CHOOSE_THEN `N:num`
+   (CONJUNCTS_THEN2 ASSUME_TAC MP_TAC)) THEN
+ REWRITE_TAC[DE_MORGAN_THM; NOT_LT; NOT_LE] THEN STRIP_TAC THEN
 
- ENSURES_WHILE_UP_TAC `buflen DIV 8` `pc + 108` `pc + 248`
+ (* For all i < N: 8*(i+1) <= buflen AND LENGTH(...) < 256 *)
+
+ SUBGOAL_THEN `0 < N` ASSUME_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+
+ ENSURES_WHILE_UP_TAC `N:num` `pc + 108` `pc + 248`
   `\i s. read (memory :> bytes (table,4096)) s =
          num_of_wordlist mldsa_rej_uniform_eta_table /\
          read (memory :> bytes (buf,buflen)) s = num_of_wordlist inlist /\
@@ -700,7 +713,6 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read Q31 s = word 664619068533544770747334646890102785 /\
          let niblist = REJ_NIBBLES_ETA4(SUB_LIST(0,8 * i) inlist) in
          let niblen = LENGTH niblist in
-         niblen < 272 /\
          read X0 s = res /\
          read X1 s = word_add buf (word(8 * i)) /\
          read X2 s = word_sub (word buflen) (word(8 * i)) /\
@@ -710,7 +722,7 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          read (memory :> bytes (stackpointer,2 * niblen)) s =
          num_of_wordlist niblist` THEN
  REPEAT CONJ_TAC THENL
-  [(*** Subgoal 1: 0 < buflen DIV 8 ***)
+  [(*** Subgoal 1: 0 < N ***)
    ASM_ARITH_TAC;
 
    (*** Subgoal 2: Pre-loop init (75 ARM steps) ***)
@@ -722,13 +734,20 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    REWRITE_TAC[MULT_CLAUSES; SUB_LIST_CLAUSES; REJ_NIBBLES_ETA4_EMPTY] THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[LENGTH] THEN
    REWRITE_TAC[MULT_CLAUSES; WORD_ADD_0; WORD_SUB_0] THEN
-   CONV_TAC NUM_REDUCE_CONV THEN
    REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL; num_of_wordlist];
 
    (*** Subgoal 3: Loop body — split at pc+0xD8 for ST1 stores ***)
    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
    ABBREV_TAC `curlist = REJ_NIBBLES_ETA4(SUB_LIST(0,8 * i) inlist)` THEN
    ABBREV_TAC `curlen = LENGTH(curlist:int16 list)` THEN
+   (* From WOP minimality: curlen < 256 and 8*(i+1) <= buflen *)
+   SUBGOAL_THEN `curlen < 256` ASSUME_TAC THENL
+    [EXPAND_TAC "curlen" THEN EXPAND_TAC "curlist" THEN
+     FIRST_X_ASSUM(MP_TAC o SPEC `i:num`) THEN
+     UNDISCH_TAC `i < N:num` THEN ARITH_TAC; ALL_TAC] THEN
+   SUBGOAL_THEN `8 * (i + 1) <= buflen` ASSUME_TAC THENL
+    [FIRST_X_ASSUM(MP_TAC o SPEC `i:num`) THEN
+     UNDISCH_TAC `i < N:num` THEN ARITH_TAC; ALL_TAC] THEN
    CONV_TAC(RATOR_CONV(LAND_CONV(TOP_DEPTH_CONV let_CONV))) THEN
    ASM_REWRITE_TAC[] THEN
    ENSURES_INIT_TAC "s0" THEN
@@ -761,8 +780,13 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
      ENSURES_INIT_TAC "s0" THEN
      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
      SUBGOAL_THEN `~(256 <= val(word curlen:int64))` ASSUME_TAC THENL
-      [VAL_INT64_TAC `curlen:num` THEN ASM_REWRITE_TAC[] THEN
-       ASM_ARITH_TAC; ALL_TAC] THEN
+      [REWRITE_TAC[NOT_LE; VAL_WORD; DIMINDEX_64] THEN
+       CONV_TAC NUM_REDUCE_CONV THEN
+       SUBGOAL_THEN `curlen MOD 18446744073709551616 = curlen`
+        SUBST1_TAC THENL
+        [MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `curlen < 256` THEN
+         ARITH_TAC; UNDISCH_TAC `curlen < 256` THEN ARITH_TAC];
+       ALL_TAC] THEN
      RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(256 <= val(word curlen:int64))`]) THEN
      (* Steps 3-11: nibble extraction through USHLL *)
      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--11) THEN
