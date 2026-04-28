@@ -645,6 +645,7 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
  (* REJ_NIBBLES_ETA4(inlist) directly -- no existential, no niblen bound. *)
  (* Loop uses buflen DIV 8 iterations: exhausts entire buffer, BCS        *)
  (* deterministically not taken after last iteration.                      *)
+ (* Intermediate state at pc+256: uses existential n for processed prefix *)
  ENSURES_SEQUENCE_TAC `pc + 256`
   `\s. aligned_bytes_loaded s (word pc) mldsa_rej_uniform_eta4_mc /\
        read PC s = word(pc + 256) /\
@@ -652,20 +653,25 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
        read X8 s = stackpointer /\
        read Q7 s = word 20769504351625144638033088116686852 /\
        ALL (nonoverlapping (res,1024)) [(word pc,344); (stackpointer,576)] /\
-       let niblist = REJ_NIBBLES_ETA4 inlist in
-       let niblen = LENGTH niblist in
-       read X9 s = word niblen /\
-       read (memory :> bytes (stackpointer,2 * niblen)) s =
-       num_of_wordlist niblist` THEN
+       ?n. let niblist = REJ_NIBBLES_ETA4(SUB_LIST(0,8*n) inlist) in
+           let niblen = LENGTH niblist in
+           niblen < 272 /\
+           (buflen < 8 * (n + 1) \/ 256 <= niblen) /\
+           read X9 s = word niblen /\
+           read (memory :> bytes (stackpointer,2 * niblen)) s =
+           num_of_wordlist niblist` THEN
  CONJ_TAC THENL
   [ALL_TAC;
 
    (*** Writeback phase: pc+256 to pc+336 ***)
-   (*** Unroll the writeback loop: 245 ARM steps ***)
+   (*** Uses partial niblist = REJ_NIBBLES_ETA4(SUB_LIST(0,8*n) inlist) ***)
    ENSURES_INIT_TAC "s0" THEN
+   FIRST_X_ASSUM(X_CHOOSE_THEN `nn:num` MP_TAC) THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-   ABBREV_TAC `niblist = REJ_NIBBLES_ETA4 (inlist:byte list):int16 list` THEN
+   ABBREV_TAC `niblist = REJ_NIBBLES_ETA4
+     (SUB_LIST(0,8*nn) inlist):int16 list` THEN
    ABBREV_TAC `niblen = LENGTH(niblist:int16 list)` THEN
+   STRIP_TAC THEN
    DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
    VAL_INT64_TAC `niblen:num` THEN
    BIGNUM_LDIGITIZE_TAC "b_"
@@ -675,12 +681,19 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--245) THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-   SUBGOAL_THEN `LENGTH(REJ_SAMPLE_ETA4 inlist:int32 list) = niblen`
-   ASSUME_TAC THENL
-    [REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN
-     FIRST_X_ASSUM(fun th -> REWRITE_TAC[SYM th]) THEN
-     ASM_REWRITE_TAC[]; ALL_TAC] THEN
-   ASM_REWRITE_TAC[LENGTH_SUB_LIST; SUB_0] THEN
+   (* Connect partial niblist to full REJ_SAMPLE_ETA4 inlist *)
+   SUBGOAL_THEN
+    `SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist:int32 list) =
+     SUB_LIST(0,256)(MAP (\x:int16. word_sx x:int32) niblist)`
+   SUBST1_TAC THENL
+    [EXPAND_TAC "niblist" THEN
+     REWRITE_TAC[REJ_SAMPLE_ETA4; GSYM REJ_NIBBLES_ETA4_APPEND;
+                 GSYM MAP_APPEND] THEN
+     MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
+     REWRITE_TAC[LENGTH_MAP] THEN ASM_REWRITE_TAC[];
+     ALL_TAC] THEN
+   REWRITE_TAC[LENGTH_SUB_LIST; LENGTH_MAP; SUB_0] THEN
+   ASM_REWRITE_TAC[] THEN
    GEN_REWRITE_TAC (LAND_CONV o LAND_CONV) [GSYM COND_RAND] THEN
    REWRITE_TAC[ARITH_RULE `(if l < p then l else p) = MIN p l`] THEN
    CONJ_TAC THENL [REFL_TAC; ALL_TAC] THEN
