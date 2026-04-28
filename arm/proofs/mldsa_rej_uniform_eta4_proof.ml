@@ -254,6 +254,26 @@ let LENGTH_REJ_NIBBLES_ETA4 = prove
   UNDISCH_TAC `LENGTH(NIBBLES_OF_BYTES t:int16 list) <=
                2 * LENGTH(t:byte list)` THEN ARITH_TAC);;
 
+let NIBLEN_BOUND_FROM_WOP = prove
+ (`!inlist:byte list. !N.
+   0 < N /\
+   (!m. m < N ==> 8 * (m + 1) <= LENGTH inlist /\
+        LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8*m) inlist)) < 256)
+   ==> LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8*N) inlist):int16 list) < 272`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`) THEN
+  ASM_REWRITE_TAC[ARITH_RULE `N - 1 < N <=> 0 < N`] THEN STRIP_TAC THEN
+  SUBGOAL_THEN `8 * N = 0 + 8 * (N - 1) + 8` SUBST1_TAC THENL
+   [UNDISCH_TAC `0 < N` THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[SUB_LIST_SPLIT; SUB_LIST_CLAUSES; APPEND; ADD_CLAUSES] THEN
+  REWRITE_TAC[REJ_NIBBLES_ETA4_APPEND; LENGTH_APPEND] THEN
+  MP_TAC(ISPEC `SUB_LIST(8*(N-1),8) inlist:byte list`
+    LENGTH_REJ_NIBBLES_ETA4) THEN
+  REWRITE_TAC[LENGTH_SUB_LIST] THEN
+  UNDISCH_TAC
+   `LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8*(N-1)) inlist):int16 list) < 256` THEN
+  ARITH_TAC);;
+
 (* Helper lemma *)
 let EIGHT_N_LE_BUFLEN = prove
  (`(!m. m < N ==> ~(buflen < 8 * (m + 1))) /\ 0 < N
