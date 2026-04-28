@@ -177,6 +177,66 @@ let REJ_SAMPLE_ETA4_APPEND = prove
            APPEND (REJ_SAMPLE_ETA4 l1) (REJ_SAMPLE_ETA4 l2)`,
   REWRITE_TAC[REJ_SAMPLE_ETA4; REJ_NIBBLES_ETA4_APPEND; MAP_APPEND]);;
 
+let NIBBLES_OF_BYTES_SPLIT4 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+   NIBBLES_OF_BYTES [b0;b1;b2;b3;b4;b5;b6;b7] =
+   APPEND (NIBBLES_OF_BYTES [b0;b1;b2;b3])
+          (NIBBLES_OF_BYTES [b4;b5;b6;b7]:int16 list)`,
+  REWRITE_TAC[NIBBLES_OF_BYTES; NIBBLE_PAIR; APPEND]);;
+
+let NIBBLES_OF_BYTES_4 = prove
+ (`!b0 b1 b2 b3:byte.
+   NIBBLES_OF_BYTES [b0;b1;b2;b3] =
+   [word(val b0 MOD 16); word(val b0 DIV 16);
+    word(val b1 MOD 16); word(val b1 DIV 16);
+    word(val b2 MOD 16); word(val b2 DIV 16);
+    word(val b3 MOD 16); word(val b3 DIV 16):int16]`,
+  REWRITE_TAC[NIBBLES_OF_BYTES; NIBBLE_PAIR; APPEND]);;
+
+let VAL_WORD_NIBBLE_LT = prove
+ (`!b:byte.
+   val(word(val b MOD 16):int16) = val b MOD 16 /\
+   val(word(val b DIV 16):int16) = val b DIV 16`,
+  GEN_TAC THEN REWRITE_TAC[VAL_WORD; DIMINDEX_16] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  CONJ_TAC THEN MATCH_MP_TAC MOD_LT THEN
+  MP_TAC(ISPEC `b:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN ARITH_TAC);;
+
+let REJ_NIBBLES_COUNT_4 = prove
+ (`!b0 b1 b2 b3:byte.
+   LENGTH(FILTER (\x:int16. val x < 9) (NIBBLES_OF_BYTES [b0;b1;b2;b3])) =
+   bitval(val b0 MOD 16 < 9) + bitval(val b0 DIV 16 < 9) +
+   bitval(val b1 MOD 16 < 9) + bitval(val b1 DIV 16 < 9) +
+   bitval(val b2 MOD 16 < 9) + bitval(val b2 DIV 16 < 9) +
+   bitval(val b3 MOD 16 < 9) + bitval(val b3 DIV 16 < 9)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[NIBBLES_OF_BYTES_4] THEN
+  REWRITE_TAC[ISPECL [`word(val(b0:byte) MOD 16):int16`;
+    `word(val(b0:byte) DIV 16):int16`;
+    `word(val(b1:byte) MOD 16):int16`;
+    `word(val(b1:byte) DIV 16):int16`;
+    `word(val(b2:byte) MOD 16):int16`;
+    `word(val(b2:byte) DIV 16):int16`;
+    `word(val(b3:byte) MOD 16):int16`;
+    `word(val(b3:byte) DIV 16):int16`] FILTER_LENGTH_BITVAL] THEN
+  REWRITE_TAC[VAL_WORD_NIBBLE_LT]);;
+
+let REJ_NIBBLES_COUNT_8 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+   LENGTH(REJ_NIBBLES_ETA4 [b0;b1;b2;b3;b4;b5;b6;b7]) =
+   (bitval(val b0 MOD 16 < 9) + bitval(val b0 DIV 16 < 9) +
+    bitval(val b1 MOD 16 < 9) + bitval(val b1 DIV 16 < 9) +
+    bitval(val b2 MOD 16 < 9) + bitval(val b2 DIV 16 < 9) +
+    bitval(val b3 MOD 16 < 9) + bitval(val b3 DIV 16 < 9)) +
+   bitval(val b4 MOD 16 < 9) + bitval(val b4 DIV 16 < 9) +
+   bitval(val b5 MOD 16 < 9) + bitval(val b5 DIV 16 < 9) +
+   bitval(val b6 MOD 16 < 9) + bitval(val b6 DIV 16 < 9) +
+   bitval(val b7 MOD 16 < 9) + bitval(val b7 DIV 16 < 9)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[REJ_NIBBLES_ETA4; NIBBLES_OF_BYTES_SPLIT4] THEN
+  REWRITE_TAC[FILTER_APPEND; LENGTH_APPEND] THEN
+  REWRITE_TAC[REJ_NIBBLES_COUNT_4]);;
+
 let LENGTH_FILTER = prove
  (`!P l:A list. LENGTH(FILTER P l) <= LENGTH l`,
   GEN_TAC THEN LIST_INDUCT_TAC THEN ASM_REWRITE_TAC[FILTER; LE_REFL] THEN
