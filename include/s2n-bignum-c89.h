@@ -982,6 +982,10 @@ extern void edwards25519_scalarmuldouble_alt(uint64_t res[8],const uint64_t scal
 extern void mldsa_ntt_arm(int32_t a[256], const int32_t z_012345[144], const int32_t z_67[384]);
 
 /* Inverse number-theoretic transform for ML-DSA */
+/* Input a[256], z_78[384], z_123456[160] (signed 32-bit words); output a[256] (signed 32-bit words) */
+extern void mldsa_intt_arm(int32_t a[256], const int32_t z_78[384], const int32_t z_123456[160]);
+
+/* Inverse number-theoretic transform for ML-DSA */
 /* Input a[256], zetas[624] (signed 32-bit words); output a[256] (signed 32-bit words) */
 extern void mldsa_intt(int32_t a[256], const int32_t zetas[624]);
 
@@ -989,7 +993,7 @@ extern void mldsa_intt(int32_t a[256], const int32_t zetas[624]);
 /* Input a[256], zetas[624] (signed 32-bit words); output a[256] (signed 32-bit words) */
 extern void mldsa_ntt(int32_t a[256], const int32_t zetas[624]);
 
-/* NTT domain coefficient unpacking for ML-DSA */
+/* NTT unpack for ML-DSA (rearrange coefficients from bitreversed to standard order) */
 /* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
 extern void mldsa_nttunpack(int32_t a[256]);
 
@@ -1000,6 +1004,10 @@ extern void mldsa_pointwise(int32_t r[256], const int32_t a[256], const int32_t 
 /* Pointwise multiplication of polynomials in NTT domain (Montgomery form) for ML-DSA, x86 version */
 /* Inputs a[256], b[256], qdata[16] (signed 32-bit words); output c[256] (signed 32-bit words) */
 extern void mldsa_pointwise_x86(int32_t c[256], const int32_t a[256], const int32_t b[256], const int32_t qdata[16]);
+
+/* Conditional addition of Q to polynomial coefficients for ML-DSA */
+/* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
+extern void mldsa_caddq(int32_t a[256]);
 
 /* Canonical reduction of polynomial coefficients for ML-DSA */
 /* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
