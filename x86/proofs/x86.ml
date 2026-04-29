@@ -1021,22 +1021,22 @@ let x86_ENDBR64 = new_definition
 
 let x86_VZEROUPPER = new_definition
  `x86_VZEROUPPER (s:x86state) =
-  (XMM0  := read XMM0  s ,,
-   XMM1  := read XMM1  s ,,
-   XMM2  := read XMM2  s ,,
-   XMM3  := read XMM3  s ,,
-   XMM4  := read XMM4  s ,,
-   XMM5  := read XMM5  s ,,
-   XMM6  := read XMM6  s ,,
-   XMM7  := read XMM7  s ,,
-   XMM8  := read XMM8  s ,,
-   XMM9  := read XMM9  s ,,
-   XMM10 := read XMM10 s ,,
-   XMM11 := read XMM11 s ,,
-   XMM12 := read XMM12 s ,,
-   XMM13 := read XMM13 s ,,
-   XMM14 := read XMM14 s ,,
-   XMM15 := read XMM15 s) s`;;
+  (YMM0  := word_zx(word_subword (read YMM0  s) (0,128):int128) ,,
+   YMM1  := word_zx(word_subword (read YMM1  s) (0,128):int128) ,,
+   YMM2  := word_zx(word_subword (read YMM2  s) (0,128):int128) ,,
+   YMM3  := word_zx(word_subword (read YMM3  s) (0,128):int128) ,,
+   YMM4  := word_zx(word_subword (read YMM4  s) (0,128):int128) ,,
+   YMM5  := word_zx(word_subword (read YMM5  s) (0,128):int128) ,,
+   YMM6  := word_zx(word_subword (read YMM6  s) (0,128):int128) ,,
+   YMM7  := word_zx(word_subword (read YMM7  s) (0,128):int128) ,,
+   YMM8  := word_zx(word_subword (read YMM8  s) (0,128):int128) ,,
+   YMM9  := word_zx(word_subword (read YMM9  s) (0,128):int128) ,,
+   YMM10 := word_zx(word_subword (read YMM10 s) (0,128):int128) ,,
+   YMM11 := word_zx(word_subword (read YMM11 s) (0,128):int128) ,,
+   YMM12 := word_zx(word_subword (read YMM12 s) (0,128):int128) ,,
+   YMM13 := word_zx(word_subword (read YMM13 s) (0,128):int128) ,,
+   YMM14 := word_zx(word_subword (read YMM14 s) (0,128):int128) ,,
+   YMM15 := word_zx(word_subword (read YMM15 s) (0,128):int128)) s`;;
 
 (*** There are really four different multiplies here.
  ***
