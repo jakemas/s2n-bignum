@@ -1,0 +1,3 @@
+checkpoint = "rej_uniform"
+timeout = 2400
+max_output_chars = 8000
