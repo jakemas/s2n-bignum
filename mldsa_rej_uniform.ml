@@ -1843,12 +1843,35 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
         `LENGTH (REJ_SAMPLE (SUB_LIST (8 * (N - 1),8) (inlist:(24 word)list))) <= 8` THEN
       ARITH_TAC;
       ALL_TAC] THEN
-    (* ENSURES_INIT and step CMP eax 256; JAE *)
-    ENSURES_INIT_TAC "s0" THEN
-    X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [40;41] THEN
-    (* Case split on outlen = 256 vs outlen < 256 *)
-    ASM_CASES_TAC `outlen = 256` THENL
-     [(* Case A: outlen = 256. JAE fires -> pc+242 -> VZEROUPPER -> pc+245 *)
+    (* Characterize the number of scalar iterations K via WOP.
+       K = smallest j such that LENGTH(REJ_SAMPLE(SUB_LIST(0,8*N+j))) >= 256 OR 837 < 24*N+3*j. *)
+    SUBGOAL_THEN
+      `?j. 256 <= LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * N + j) (inlist:(24 word)list))) \/
+           837 < 24 * N + 3 * j`
+      MP_TAC THENL
+     [EXISTS_TAC `280:num` THEN DISJ2_TAC THEN
+      UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC;
+      GEN_REWRITE_TAC LAND_CONV [num_WOP]] THEN
+    DISCH_THEN(X_CHOOSE_THEN `K:num` (CONJUNCTS_THEN2 ASSUME_TAC MP_TAC)) THEN
+    DISCH_THEN(fun th ->
+      ASSUME_TAC(REWRITE_RULE[DE_MORGAN_THM; NOT_LE; NOT_LT] th)) THEN
+    (* Case split: K = 0 (no scalar iterations) vs K > 0 (scalar loop) *)
+    ASM_CASES_TAC `K = 0` THENL
+     [(* K = 0: Must have outlen = 256 (since 24*N <= 832 rules out offset exit at K=0). *)
+      SUBGOAL_THEN `outlen = 256` ASSUME_TAC THENL
+       [RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `K = 0`; ADD_CLAUSES; MULT_CLAUSES]) THEN
+        UNDISCH_TAC
+          `256 <= LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N) (inlist:(24 word)list))) \/
+           837 < 24 * N` THEN
+        UNDISCH_TAC
+          `LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * N) (inlist:(24 word)list))) = outlen` THEN
+        DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+        UNDISCH_TAC `outlen <= 256` THEN
+        UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC;
+        ALL_TAC] THEN
+      (* Apply case A proof: JAE fires to pc+242 *)
+      ENSURES_INIT_TAC "s0" THEN
+      X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [40;41] THEN
       RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `outlen = 256`]) THEN
       FIRST_X_ASSUM(fun th ->
         if (try let s = string_of_term (concl th) in String.length s > 20 &&
@@ -1872,45 +1895,120 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
       DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
       ASM_REWRITE_TAC[];
 
-      (* Case B: outlen < 256. JAE falls through to pc+188. Step CMP ecx 837. *)
-      SUBGOAL_THEN `read RIP s41 = word(pc + 188):int64` ASSUME_TAC THENL
-       [FIRST_X_ASSUM(fun th ->
-          if can (find_term ((=) `read RIP s41`)) (concl th) && is_eq(concl th)
-          then SUBST1_TAC th else failwith "") THEN
-        MATCH_MP_TAC(TAUT `~p ==> (if p then a else b) = b`) THEN
-        REWRITE_TAC[VAL_WORD_ZX_GEN; VAL_WORD_SUB_CASES; VAL_WORD_ADD; VAL_WORD;
-                    DIMINDEX_32; DIMINDEX_64] THEN
-        CONV_TAC NUM_REDUCE_CONV THEN
-        SUBGOAL_THEN `outlen < 4294967296 /\ outlen < 18446744073709551616`
-          STRIP_ASSUME_TAC THENL
-         [UNDISCH_TAC `outlen <= 256` THEN ARITH_TAC; ALL_TAC] THEN
-        ASM_SIMP_TAC[MOD_LT] THEN
-        UNDISCH_TAC `~(outlen = 256)` THEN UNDISCH_TAC `outlen <= 256` THEN
-        ARITH_TAC;
-        ALL_TAC] THEN
-      FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
-        let c = concl th in
-        can (find_term ((=) `read RIP s41`)) c && is_eq c &&
-        can (find_term (fun t -> try fst(dest_const t) = "COND" with _ -> false)) (rhs c))) THEN
-      X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [42;43] THEN
-      (* Prove RIP s43 = word(pc+196) (fall-through: 24*N <= 832 < 837) *)
-      SUBGOAL_THEN `read RIP s43 = word(pc + 196):int64` ASSUME_TAC THENL
-       [FIRST_X_ASSUM(fun th ->
-          if can (find_term ((=) `read RIP s43`)) (concl th) && is_eq(concl th)
-          then SUBST1_TAC th else failwith "") THEN
-        MATCH_MP_TAC(TAUT `~p ==> (if p then a else b) = b`) THEN
-        REWRITE_TAC[NOT_CLAUSES; DE_MORGAN_THM;
-                    VAL_WORD_ZX_GEN; VAL_WORD_SUB_CASES; VAL_WORD_ADD; VAL_WORD;
-                    DIMINDEX_32; DIMINDEX_64] THEN
-        CONV_TAC NUM_REDUCE_CONV THEN
-        SUBGOAL_THEN `24 * N < 4294967296 /\ 24 * N < 18446744073709551616`
-          STRIP_ASSUME_TAC THENL
-         [UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC; ALL_TAC] THEN
-        ASM_SIMP_TAC[MOD_LT] THEN
-        UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC;
-        ALL_TAC] THEN
-      (* TODO: scalar rejection loop from pc+196 *)
-      REPEAT CHEAT_TAC]]);;
+      (* K > 0: scalar loop runs K times. Use ENSURES_WHILE_UP2_TAC. *)
+      ENSURES_WHILE_UP2_TAC `K:num` `pc + 181` `pc + 242`
+        `\i s. bytes_loaded s (word pc) (BUTLAST mldsa_rej_uniform_tmc) /\
+               read RSP s = stackpointer /\
+               read (memory :> bytes (buf,840)) s = num_of_wordlist inlist /\
+               read (memory :> bytes (table,2048)) s =
+                 num_of_wordlist(mldsa_rej_uniform_table:byte list) /\
+               read RDI s = res /\ read RSI s = buf /\ read RDX s = table /\
+               read YMM0 s =
+                 word 115366376096492355175489748997433888275274855593258845241081954797768348401920 /\
+               read YMM1 s =
+                 word 226156397384342666605459106258636701594091082888230722833791023177481060351 /\
+               read YMM2 s =
+                 word 225935595421087293402315996791205668696012104344015382954355885915737415681 /\
+               (let outlist_i = REJ_SAMPLE(SUB_LIST(0, 8 * N + i) (inlist:(24 word)list)) in
+                let outlen_i = LENGTH outlist_i in
+                read RAX s = word outlen_i /\
+                read RCX s = word(24 * N + 3 * i) /\
+                read(memory :> bytes(res, 4 * outlen_i)) s = num_of_wordlist outlist_i)` THEN
+      ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+       [(* Init: precond -> invariant @ 0 *)
+        ENSURES_INIT_TAC "s0" THEN
+        ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+        CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+        REWRITE_TAC[ADD_CLAUSES; MULT_CLAUSES] THEN ASM_REWRITE_TAC[];
+
+        (* Body: invariant @ i -> invariant @ (i+1) at pc+181 or pc+242.
+           Steps CMP eax 256; JAE (not taken), CMP ecx 837; JA (not taken),
+           then scalar body (MOVZX + mask + CMP Q + JAE), then accept/reject branches.
+           Currently this whole body is CHEAT'd — TODO. *)
+        REPEAT CHEAT_TAC;
+
+        (* Post: invariant @ K -> postcondition.
+           At i=K, exit condition fires. RIP = pc+242 (vzeroupper). *)
+        ENSURES_INIT_TAC "s0" THEN
+        (* Break out the invariant conjunction *)
+        RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV let_CONV)) THEN
+        FIRST_X_ASSUM(fun th ->
+          let c = concl th in
+          if is_conj c && (try can (find_term ((=) `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N + K) (inlist:(24 word)list)))`)) c with _ -> false)
+          then STRIP_ASSUME_TAC th else failwith "not inv") THEN
+        (* VZEROUPPER *)
+        X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [55] THEN
+        ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+        CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+        (* The disjunct at K: either count-exit (256 <= outlen_K) or offset-exit (837 < 24*N+3*K) *)
+        FIRST_X_ASSUM(DISJ_CASES_TAC o check (is_disj o concl)) THENL
+         [(* count-exit case: 256 <= outlen_K. Since outlen is monotonic +0/+1 per scalar iter,
+             and outlen_{K-1} < 256 (from WOP), we have outlen_K = 256. *)
+          SUBGOAL_THEN
+            `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N + K) (inlist:(24 word)list))) = 256`
+            ASSUME_TAC THENL
+           [REPEAT CHEAT_TAC;  (* TODO: monotonicity (outlen increases by 0 or 1 per iter) *)
+            ALL_TAC] THEN
+          SUBGOAL_THEN `SUB_LIST (0,256) (REJ_SAMPLE (inlist:(24 word)list)) =
+                        REJ_SAMPLE (SUB_LIST (0, 8 * N + K) inlist)`
+            ASSUME_TAC THENL
+           [MATCH_MP_TAC REJ_SAMPLE_PREFIX_256 THEN ASM_REWRITE_TAC[];
+            ALL_TAC] THEN
+          ASM_REWRITE_TAC[] THEN
+          SUBGOAL_THEN `SUB_LIST (0,256) (REJ_SAMPLE (SUB_LIST (0,8 * N + K) (inlist:(24 word)list))) =
+                        REJ_SAMPLE (SUB_LIST (0,8 * N + K) inlist)`
+            SUBST1_TAC THENL
+           [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[LE_REFL];
+            ALL_TAC] THEN
+          ASM_REWRITE_TAC[];
+
+          (* offset-exit case: 837 < 24*N+3*K. Need to handle whether count-exit also fires. *)
+          ASM_CASES_TAC
+            `256 <= LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * N + K) (inlist:(24 word)list)))`
+          THENL
+           [(* Both conditions: 256 <= outlen_K, reuse SUBLIST_256_BOUNDED *)
+            SUBGOAL_THEN `SUB_LIST (0,256) (REJ_SAMPLE (inlist:(24 word)list)) =
+                          SUB_LIST (0,256) (REJ_SAMPLE (SUB_LIST (0, 8 * N + K) inlist))`
+              ASSUME_TAC THENL
+             [MATCH_MP_TAC REJ_SAMPLE_SUBLIST_256_BOUNDED THEN ASM_REWRITE_TAC[];
+              ALL_TAC] THEN
+            REPEAT CHEAT_TAC;  (* TODO: memory subsume for case when outlen_K > 256 *)
+
+            (* Only offset-exit: outlen_K < 256 and 24*N+3*K > 837.
+               Then 8*N+K >= 280 (bytes consumed past input), so SUB_LIST = inlist. *)
+            SUBGOAL_THEN `SUB_LIST (0, 8 * N + K) (inlist:(24 word)list) = inlist`
+              SUBST1_TAC THENL
+             [MATCH_MP_TAC SUB_LIST_REFL THEN
+              UNDISCH_TAC `LENGTH (inlist:(24 word)list) = 280` THEN
+              UNDISCH_TAC `837 < 24 * N + 3 * K` THEN ARITH_TAC;
+              ALL_TAC] THEN
+            SUBGOAL_THEN `LENGTH (REJ_SAMPLE (inlist:(24 word)list)) <= 256`
+              ASSUME_TAC THENL
+             [UNDISCH_TAC
+                `~(256 <= LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N + K) (inlist:(24 word)list))))` THEN
+              SUBGOAL_THEN `SUB_LIST (0, 8 * N + K) (inlist:(24 word)list) = inlist`
+                SUBST1_TAC THENL
+               [MATCH_MP_TAC SUB_LIST_REFL THEN
+                UNDISCH_TAC `LENGTH (inlist:(24 word)list) = 280` THEN
+                UNDISCH_TAC `837 < 24 * N + 3 * K` THEN ARITH_TAC;
+                ALL_TAC] THEN
+              ARITH_TAC;
+              ALL_TAC] THEN
+            SUBGOAL_THEN `SUB_LIST (0,256) (REJ_SAMPLE (inlist:(24 word)list)) = REJ_SAMPLE inlist`
+              SUBST1_TAC THENL
+             [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[];
+              ALL_TAC] THEN
+            REWRITE_TAC[] THEN
+            UNDISCH_TAC
+              `read (memory :> bytes (res,4 * LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N + K) (inlist:(24 word)list)))))
+                s0 = num_of_wordlist (REJ_SAMPLE (SUB_LIST (0,8 * N + K) inlist))` THEN
+            SUBGOAL_THEN `SUB_LIST (0, 8 * N + K) (inlist:(24 word)list) = inlist`
+              SUBST1_TAC THENL
+             [MATCH_MP_TAC SUB_LIST_REFL THEN
+              UNDISCH_TAC `LENGTH (inlist:(24 word)list) = 280` THEN
+              UNDISCH_TAC `837 < 24 * N + 3 * K` THEN ARITH_TAC;
+              ALL_TAC] THEN
+            REWRITE_TAC[]]]]]]);;
 (* DISABLED: original count exit + post-loop for debugging *)
 (* ORIGINAL_J2:
         (* The first JA fires because curlen + newlen > 248 *)
