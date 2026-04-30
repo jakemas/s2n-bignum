@@ -190,4 +190,35 @@ let MLDSA_VPERMD_BRIDGE = prove
   CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
   DISCH_THEN ACCEPT_TAC);;
 
+(* ------------------------------------------------------------------------- *)
+(* REJ_SAMPLE list decomposition helpers for the post-loop proof.            *)
+(* ------------------------------------------------------------------------- *)
+
+(* REJ_SAMPLE of a list is APPEND of REJ_SAMPLE of a prefix and a suffix. *)
+let REJ_SAMPLE_SPLIT = prove
+ (`!(l:(24 word)list) n.
+    REJ_SAMPLE l = APPEND (REJ_SAMPLE (SUB_LIST (0,n) l))
+                          (REJ_SAMPLE (SUB_LIST (n, LENGTH l - n) l))`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[GSYM REJ_SAMPLE_APPEND] THEN
+  MESON_TAC[SUB_LIST_TOPSPLIT]);;
+
+(* If a prefix's REJ_SAMPLE has length 256, then the first 256 of REJ_SAMPLE
+   of the full list equals REJ_SAMPLE of that prefix. Used in the post-loop
+   JAE-exit case to conclude outlist = SUB_LIST (0,256) (REJ_SAMPLE inlist). *)
+let REJ_SAMPLE_PREFIX_256 = prove
+ (`!(inlist:(24 word)list) k.
+    LENGTH (REJ_SAMPLE (SUB_LIST (0,k) inlist)) = 256
+    ==> SUB_LIST (0,256) (REJ_SAMPLE inlist) = REJ_SAMPLE (SUB_LIST (0,k) inlist)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`inlist:(24 word)list`; `k:num`] REJ_SAMPLE_SPLIT) THEN
+  DISCH_THEN(fun th -> GEN_REWRITE_TAC (LAND_CONV o RAND_CONV) [th]) THEN
+  MP_TAC(ISPECL
+   [`REJ_SAMPLE (SUB_LIST (0,k) (inlist:(24 word)list))`;
+    `REJ_SAMPLE (SUB_LIST (k, LENGTH inlist - k) (inlist:(24 word)list))`;
+    `256`] SUB_LIST_APPEND_LEFT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[LE_REFL]; ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  MATCH_MP_TAC SUB_LIST_REFL THEN
+  ASM_REWRITE_TAC[LE_REFL]);;
+
 Printf.printf "=== defs_extra loaded ===\n%!";;

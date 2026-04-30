@@ -36,7 +36,9 @@ g `!res buf table (inlist:(24 word)list) pc stackpointer.
               read(memory :> bytes(res,4 * outlen)) s =
                 num_of_wordlist outlist)
          (MAYCHANGE [RSP; RIP; RAX; RCX; R8; R9; R10] ,,
-          MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4] ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4;
+                     ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11;
+                     ZMM12; ZMM13; ZMM14; ZMM15] ,,
           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
           MAYCHANGE [memory :> bytes(res,1024)])`;;
 

@@ -383,7 +383,9 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
               read(memory :> bytes(res,4 * outlen)) s =
                 num_of_wordlist outlist)
          (MAYCHANGE [RSP; RIP; RAX; RCX; R8; R9; R10] ,,
-          MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4] ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4;
+                     ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11;
+                     ZMM12; ZMM13; ZMM14; ZMM15] ,,
           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
           MAYCHANGE [memory :> bytes(res,1024)])`,
 
@@ -1777,6 +1779,56 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
     (* Subgoal 3: Post-loop                                              *)
     (* ================================================================= *)
     (fun gl -> Printf.printf "  DEBUG[K]: post-loop\n%!"; ALL_TAC gl) THEN
+    (* ================================================================= *)
+    (* Subgoal 3: Post-loop (scalar loop + VZEROUPPER + RET)             *)
+    (*                                                                   *)
+    (* Entry: pc+181 with REJ_SAMPLE(SUB_LIST(0,8*N)) accumulated.      *)
+    (* Code structure:                                                  *)
+    (*   pc+181: CMP eax,256; JAE vzeroupper                           *)
+    (*   pc+188: CMP ecx,837; JA vzeroupper                            *)
+    (*   pc+196..240: scalar coefficient loop (≤ 8 iterations)         *)
+    (*   pc+242: VZEROUPPER                                             *)
+    (*                                                                   *)
+    (* Preparation: abbreviate outlist/outlen, establish bounds.        *)
+    (* ================================================================= *)
+    CONV_TAC(RATOR_CONV(LAND_CONV(TOP_DEPTH_CONV let_CONV))) THEN
+    MAP_EVERY ABBREV_TAC
+     [`outlist = REJ_SAMPLE (SUB_LIST (0,8 * N) inlist)`;
+      `outlen = LENGTH(outlist:int32 list)`] THEN
+    (* Derive 24*N <= 832 and LENGTH(REJ_SAMPLE(SUB_LIST(0, 8*(N-1)))) <= 248 *)
+    SUBGOAL_THEN
+     `24 * N <= 832 /\
+      LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * (N - 1)) (inlist:(24 word)list))) <= 248`
+     STRIP_ASSUME_TAC THENL
+     [FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`) THEN
+      ANTS_TAC THENL [UNDISCH_TAC `~(N = 0)` THEN ARITH_TAC; ALL_TAC] THEN
+      SUBGOAL_THEN `(N - 1) + 1 = N` SUBST1_TAC THENL
+       [UNDISCH_TAC `~(N = 0)` THEN ARITH_TAC; ALL_TAC] THEN
+      REWRITE_TAC[];
+      ALL_TAC] THEN
+    (* Derive outlen <= 256 via SIMD_ITERATION_BRIDGE at (N-1) *)
+    SUBGOAL_THEN `outlen <= 256` ASSUME_TAC THENL
+     [EXPAND_TAC "outlen" THEN EXPAND_TAC "outlist" THEN
+      MP_TAC(ISPECL [`inlist:(24 word)list`; `N - 1`;
+                     `REJ_SAMPLE(SUB_LIST(0, 8*(N-1)) (inlist:(24 word)list))`;
+                     `LENGTH(REJ_SAMPLE(SUB_LIST(0, 8*(N-1)) (inlist:(24 word)list)))`]
+        SIMD_ITERATION_BRIDGE) THEN
+      ANTS_TAC THENL
+       [REWRITE_TAC[] THEN
+        SUBGOAL_THEN `N - 1 + 1 = N` SUBST1_TAC THENL
+         [UNDISCH_TAC `~(N = 0)` THEN ARITH_TAC; ALL_TAC] THEN
+        UNDISCH_TAC `LENGTH (inlist:(24 word)list) = 280` THEN
+        UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `N - 1 + 1 = N` SUBST1_TAC THENL
+       [UNDISCH_TAC `~(N = 0)` THEN ARITH_TAC; ALL_TAC] THEN
+      STRIP_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      UNDISCH_TAC `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * (N - 1)) (inlist:(24 word)list))) <= 248` THEN
+      UNDISCH_TAC `LENGTH (REJ_SAMPLE (SUB_LIST (8 * (N - 1),8) (inlist:(24 word)list))) <= 8` THEN
+      ARITH_TAC;
+      ALL_TAC] THEN
+    (* TODO: remaining scalar loop proof *)
     REPEAT CHEAT_TAC]);;
 (* DISABLED: original count exit + post-loop for debugging *)
 (* ORIGINAL_J2:
