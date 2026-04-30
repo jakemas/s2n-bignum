@@ -1,0 +1,18 @@
+bck0073 - Added RULE_ASSUM_TAC to preserve newlen=lr connection through DISCARD
+==================================================================================
+
+Building on bck0072: In the J2 branch's post-ABBREV flow, the `ABBREV_TAC lr = ...`
+renames `newlen = LENGTH(REJ_SAMPLE(...))` to `newlen = lr` in asl. The subsequent
+`DISCARD_ASSUMPTIONS_TAC` removes this (because filter matches "newlen in fvs").
+But the `bridge` theorem built in PRE-ENSURES still uses `newlen`, while the
+memstore goal after ABBREV uses `lr`. Result: bridge didn't match goal.
+
+FIX: Insert a `RULE_ASSUM_TAC (REWRITE_RULE [newlen = lr])` before DISCARD.
+This rewrites the bridge's `newlen` to `lr`, making it usable by the memstore
+ASM_REWRITE_TAC after DISCARD.
+
+Applied to both mldsa_rej_uniform.ml and mono_proof.ml.
+
+Remaining CHEATs: 2 (J1 offset-exit, post-loop).
+
+Next: verify interactive replay that the J2 body now closes its memstore branch.

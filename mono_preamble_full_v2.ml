@@ -37,7 +37,7 @@ g `!res buf table (inlist:(24 word)list) pc stackpointer.
                 num_of_wordlist outlist)
          (MAYCHANGE [RSP; RIP; RAX; RCX; R8; R9; R10] ,,
           MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4] ,,
-          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
           MAYCHANGE [memory :> bytes(res,1024)])`;;
 
 (* Phase 1: strip + WOP + ENSURES_WHILE_UP2 *)

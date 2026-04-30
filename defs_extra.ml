@@ -122,4 +122,72 @@ let WORD_JOIN_SUBWORDS_256 = prove
                 (word_join ((word_subword q (32,32)):int32) ((word_subword q (0,32)):int32):int64):int128):int256 = q`,
   GEN_TAC THEN CONV_TAC WORD_BLAST);;
 
+(* Standalone VPERMD bridge: given 8 bounds on subwords of q and the table lookup
+   value of te, the VPERMD expansion of (q, te) mod 2^(32*popcount) equals
+   num_of_wordlist(FILTER (val<Q) [subwords]).
+   Packages VPERMD_TABLE_CORRECT + WORD_JOIN_SUBWORDS_256 into one MP_TAC-able form
+   that eliminates the 256-case brute force (255 CHEATs) in the main proof. *)
+let MLDSA_VPERMD_BRIDGE = prove
+ (`!(q:int256) (te:int64).
+     val(word_subword q (0,32):int32) < 8388608 /\
+     val(word_subword q (32,32):int32) < 8388608 /\
+     val(word_subword q (64,32):int32) < 8388608 /\
+     val(word_subword q (96,32):int32) < 8388608 /\
+     val(word_subword q (128,32):int32) < 8388608 /\
+     val(word_subword q (160,32):int32) < 8388608 /\
+     val(word_subword q (192,32):int32) < 8388608 /\
+     val(word_subword q (224,32):int32) < 8388608 /\
+     val te = (num_of_wordlist mldsa_rej_uniform_table DIV
+       2 EXP (64 * (bitval(val(word_subword q (0,32):int32) < 8380417) +
+                    2 * bitval(val(word_subword q (32,32):int32) < 8380417) +
+                    4 * bitval(val(word_subword q (64,32):int32) < 8380417) +
+                    8 * bitval(val(word_subword q (96,32):int32) < 8380417) +
+                    16 * bitval(val(word_subword q (128,32):int32) < 8380417) +
+                    32 * bitval(val(word_subword q (160,32):int32) < 8380417) +
+                    64 * bitval(val(word_subword q (192,32):int32) < 8380417) +
+                    128 * bitval(val(word_subword q (224,32):int32) < 8380417))))
+       MOD 2 EXP 64
+     ==>
+     val(word_join
+           (word_join
+             (word_join ((word_subword q (32 * val(word_subword te (56,3):3 word), 32)):int32)
+                        ((word_subword q (32 * val(word_subword te (48,3):3 word), 32)):int32):int64)
+             (word_join ((word_subword q (32 * val(word_subword te (40,3):3 word), 32)):int32)
+                        ((word_subword q (32 * val(word_subword te (32,3):3 word), 32)):int32):int64):int128)
+           (word_join
+             (word_join ((word_subword q (32 * val(word_subword te (24,3):3 word), 32)):int32)
+                        ((word_subword q (32 * val(word_subword te (16,3):3 word), 32)):int32):int64)
+             (word_join ((word_subword q (32 * val(word_subword te (8,3):3 word), 32)):int32)
+                        ((word_subword q (32 * val(word_subword te (0,3):3 word), 32)):int32):int64):int128):int256) MOD
+     2 EXP (32 * (bitval(val(word_subword q (0,32):int32) < 8380417) +
+                  bitval(val(word_subword q (32,32):int32) < 8380417) +
+                  bitval(val(word_subword q (64,32):int32) < 8380417) +
+                  bitval(val(word_subword q (96,32):int32) < 8380417) +
+                  bitval(val(word_subword q (128,32):int32) < 8380417) +
+                  bitval(val(word_subword q (160,32):int32) < 8380417) +
+                  bitval(val(word_subword q (192,32):int32) < 8380417) +
+                  bitval(val(word_subword q (224,32):int32) < 8380417))) =
+     num_of_wordlist(FILTER (\c:int32. val c < 8380417)
+       [word_subword q (0,32); word_subword q (32,32);
+        word_subword q (64,32); word_subword q (96,32);
+        word_subword q (128,32); word_subword q (160,32);
+        word_subword q (192,32); word_subword q (224,32)])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [
+    `word_subword (q:int256) (0,32):int32`;
+    `word_subword (q:int256) (32,32):int32`;
+    `word_subword (q:int256) (64,32):int32`;
+    `word_subword (q:int256) (96,32):int32`;
+    `word_subword (q:int256) (128,32):int32`;
+    `word_subword (q:int256) (160,32):int32`;
+    `word_subword (q:int256) (192,32):int32`;
+    `word_subword (q:int256) (224,32):int32`;
+    `te:int64`
+  ] VPERMD_TABLE_CORRECT) THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[WORD_JOIN_SUBWORDS_256] THEN
+  CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
+  DISCH_THEN ACCEPT_TAC);;
+
 Printf.printf "=== defs_extra loaded ===\n%!";;

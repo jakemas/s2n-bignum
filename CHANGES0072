@@ -1,0 +1,41 @@
+bck0072 - All major fixes for continue branch and J2 exit branch verified
+=============================================================================
+
+Building on bck0071, this round:
+
+1. TOP-LEVEL MAYCHANGE fix (bck0071 change, maintained): `MAYCHANGE [events]`
+   added to the outer ensures. Critical because ENSURES_FINAL_STATE_TAC tries
+   to auto-close MAYCHANGE conjuncts via MONOTONE_MAYCHANGE_TAC; without events
+   in the outer chain, the inner MAYCHANGE (which accumulates events MAYCHANGE
+   from bytes256 writes) cannot be subsumed.
+
+2. BOUNDS-SAVING SUBGOAL_THEN before coeffs_ymm3 ABBREV: 8 bounds
+   `val(word_subword (read YMM3 s29) (k,32)) < 8388608` saved BEFORE ABBREV
+   substitutes. Essential for VPERMD block Step F's picker.
+
+3. TARGETED UNDISCH pattern replacing ASM_ARITH_TAC in:
+   * Continue-branch RAX/RCX conjuncts
+   * J2-branch JA conjunct (3 nested ASM_ARITH_TACs) and RAX/RCX
+
+4. DISJ_CASES_TAC order preservation: N = i+1 derived BEFORE VSTEPS 36-37,
+   via SUBGOAL_THEN. Enables the ASM_CASES_TAC approach in J1 (future).
+
+5. Removed MONOTONE_MAYCHANGE_TAC from the continue-branch REPEAT CONJ_TAC
+   and J2-branch REPEAT CONJ_TAC chains (now dead because ENSURES_FINAL_STATE_TAC
+   auto-closes MAYCHANGE with fix #1).
+
+Interactive verification via mono_preamble_full_v2.ml:
+- Continue branch (i+1 < N path): CLOSED ✅
+- Exit branch (~(i+1 < N) path): VPERMD setup works, exit VSTEPS 36-37 work,
+  DISJ_CASES_TAC split into J1 / J2 works. J2 case A (count-exit fires) 
+  discharges up to memory-store step. J1 full proof still open.
+
+LIVE CHEAT_TAC count: 2 (J1 offset-exit, post-loop scalar tail + RET).
+
+Files synced: mldsa_rej_uniform.ml, mono_proof.ml, mono_preamble_full_v2.ml.
+
+Next:
+- J1 offset-exit: write dedicated proof using ASM_CASES on count-exit condition.
+  If count-exit fires too → use J2's proof chain. If not → VSTEPS 38-39 + 
+  CMP ecx/JA analysis with 808 < 24*(N+1) + N=i+1.
+- Post-loop: novel proof of scalar tail (≤8 iterations) + VZEROUPPER + RET.

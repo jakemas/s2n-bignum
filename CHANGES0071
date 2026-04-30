@@ -1,0 +1,40 @@
+bck0071 - MAYCHANGE events fix + targeted UNDISCH + bounds-saving SUBGOAL_THEN
+========================================================================
+
+Summary: Fixed three interrelated issues blocking the monolithic VPERMD proof.
+
+1. TOP-LEVEL MAYCHANGE (line 387): Added `MAYCHANGE [events]` to the outer
+   ensures MAYCHANGE chain. The bytes256 write in the VMOVDQU step produces
+   a MAYCHANGE that includes events, but the top-level MAYCHANGE didn't list
+   events — causing ENSURES_FINAL_STATE_TAC's auto-discharge of MAYCHANGE
+   to fail with "events subsumed ... " (events not in target chain).
+   The reference ML-KEM proof has `MAYCHANGE [events]` in its MAYCHANGE
+   chain; we should match that.
+
+2. BOUNDS-SAVING (new SUBGOAL_THEN at line 740): Before ABBREV_TAC
+   replaces `read YMM3 s29` with `coeffs_ymm3`, save the 8 bounds
+   `val(word_subword (read YMM3 s29) (k,32)) < 8388608` explicitly.
+   Without this, the bounds are consumed during CMP_MASK discharge as
+   intermediate lemmas and the later VPERMD block's Step F picker
+   (which searches for `word_subword coeffs_ymm3 (k,32) < 8388608`)
+   fails with Not_found.
+
+3. TARGETED UNDISCH (RAX/RCX branches + J2 branch): Replaced all
+   ASM_ARITH_TAC with targeted `UNDISCH_TAC + ARITH_TAC` patterns.
+   ASM_ARITH_TAC hangs on the ~200-assumption goal state because it
+   tries to process all val/word/read hypotheses. Example:
+   `SUBGOAL_THEN ... STRIP_ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC]`
+   → `SUBGOAL_THEN ... STRIP_ASSUME_TAC THENL
+      [UNDISCH_TAC \`c <= 248\` THEN UNDISCH_TAC \`l <= 8\` THEN ARITH_TAC;
+       ALL_TAC]`
+
+4. REMOVED MONOTONE_MAYCHANGE_TAC branches (lines 1167, 1355):
+   With fix #1 in place, ENSURES_FINAL_STATE_TAC auto-closes the
+   MAYCHANGE conjunct, so the trailing `REPEAT CONJ_TAC THENL [...; ...;
+   ...; MONOTONE_MAYCHANGE_TAC]` should not have a MAYCHANGE branch.
+
+Result: Continue branch now closes end-to-end (interactive verification).
+J2 count-exit branch tactic structure is intact.
+Remaining CHEATs: 2 (J1 offset-exit at line 1186, post-loop at line 1368).
+
+Sync'd changes to mono_proof.ml and mono_preamble_full_v2.ml.
