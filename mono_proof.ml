@@ -1031,6 +1031,14 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
      [`outlist = REJ_SAMPLE (SUB_LIST (0,8 * N) inlist)`;
       `outlen = LENGTH(outlist:int32 list)`] THEN
     SUBGOAL_THEN
+     `LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * N) (inlist:(24 word)list))) = outlen`
+     ASSUME_TAC THENL
+     [UNDISCH_TAC `REJ_SAMPLE (SUB_LIST (0,8 * N) (inlist:(24 word)list)) = outlist` THEN
+      DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+      UNDISCH_TAC `LENGTH (outlist:int32 list) = outlen` THEN
+      DISCH_THEN(fun th -> REWRITE_TAC[th]);
+      ALL_TAC] THEN
+    SUBGOAL_THEN
      `24 * N <= 832 /\
       LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * (N - 1)) (inlist:(24 word)list))) <= 248`
      STRIP_ASSUME_TAC THENL
@@ -1041,8 +1049,7 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
       REWRITE_TAC[];
       ALL_TAC] THEN
     SUBGOAL_THEN `outlen <= 256` ASSUME_TAC THENL
-     [EXPAND_TAC "outlen" THEN EXPAND_TAC "outlist" THEN
-      MP_TAC(ISPECL [`inlist:(24 word)list`; `N - 1`;
+     [MP_TAC(ISPECL [`inlist:(24 word)list`; `N - 1`;
                      `REJ_SAMPLE(SUB_LIST(0, 8*(N-1)) (inlist:(24 word)list))`;
                      `LENGTH(REJ_SAMPLE(SUB_LIST(0, 8*(N-1)) (inlist:(24 word)list)))`]
         SIMD_ITERATION_BRIDGE) THEN
@@ -1056,9 +1063,77 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
       SUBGOAL_THEN `N - 1 + 1 = N` SUBST1_TAC THENL
        [UNDISCH_TAC `~(N = 0)` THEN ARITH_TAC; ALL_TAC] THEN
       STRIP_TAC THEN
-      ASM_REWRITE_TAC[] THEN
-      UNDISCH_TAC `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * (N - 1)) (inlist:(24 word)list))) <= 248` THEN
-      UNDISCH_TAC `LENGTH (REJ_SAMPLE (SUB_LIST (8 * (N - 1),8) (inlist:(24 word)list))) <= 8` THEN
+      UNDISCH_TAC
+        `LENGTH(REJ_SAMPLE(SUB_LIST(0, 8 * N) (inlist:(24 word)list))) = outlen` THEN
+      UNDISCH_TAC
+        `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * N) (inlist:(24 word)list))) =
+         LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * (N - 1)) inlist)) +
+         LENGTH (REJ_SAMPLE (SUB_LIST (8 * (N - 1),8) inlist))` THEN
+      UNDISCH_TAC
+        `LENGTH (REJ_SAMPLE (SUB_LIST (0,8 * (N - 1)) (inlist:(24 word)list))) <= 248` THEN
+      UNDISCH_TAC
+        `LENGTH (REJ_SAMPLE (SUB_LIST (8 * (N - 1),8) (inlist:(24 word)list))) <= 8` THEN
       ARITH_TAC;
       ALL_TAC] THEN
-    REPEAT CHEAT_TAC]);;
+    ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [40;41] THEN
+    ASM_CASES_TAC `outlen = 256` THENL
+     [RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `outlen = 256`]) THEN
+      FIRST_X_ASSUM(fun th ->
+        if (try let s = string_of_term (concl th) in String.length s > 20 &&
+                String.sub s 0 11 = "read RIP s4" with _ -> false) &&
+           is_eq(concl th)
+        then ASSUME_TAC(CONV_RULE(RAND_CONV(DEPTH_CONV WORD_NUM_RED_CONV)) th)
+        else failwith "not RIP") THEN
+      X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [55] THEN
+      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+      CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+      SUBGOAL_THEN `SUB_LIST (0,256) (REJ_SAMPLE (inlist:(24 word)list)) =
+                    REJ_SAMPLE (SUB_LIST (0, 8 * N) inlist)`
+        ASSUME_TAC THENL
+       [MATCH_MP_TAC REJ_SAMPLE_PREFIX_256 THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      ASM_REWRITE_TAC[] THEN
+      UNDISCH_TAC
+        `REJ_SAMPLE (SUB_LIST (0,8 * N) (inlist:(24 word)list)) = outlist` THEN
+      DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+      UNDISCH_TAC `LENGTH (outlist:int32 list) = outlen` THEN
+      DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+      ASM_REWRITE_TAC[];
+
+      SUBGOAL_THEN `read RIP s41 = word(pc + 188):int64` ASSUME_TAC THENL
+       [FIRST_X_ASSUM(fun th ->
+          if can (find_term ((=) `read RIP s41`)) (concl th) && is_eq(concl th)
+          then SUBST1_TAC th else failwith "") THEN
+        MATCH_MP_TAC(TAUT `~p ==> (if p then a else b) = b`) THEN
+        REWRITE_TAC[VAL_WORD_ZX_GEN; VAL_WORD_SUB_CASES; VAL_WORD_ADD; VAL_WORD;
+                    DIMINDEX_32; DIMINDEX_64] THEN
+        CONV_TAC NUM_REDUCE_CONV THEN
+        SUBGOAL_THEN `outlen < 4294967296 /\ outlen < 18446744073709551616`
+          STRIP_ASSUME_TAC THENL
+         [UNDISCH_TAC `outlen <= 256` THEN ARITH_TAC; ALL_TAC] THEN
+        ASM_SIMP_TAC[MOD_LT] THEN
+        UNDISCH_TAC `~(outlen = 256)` THEN UNDISCH_TAC `outlen <= 256` THEN
+        ARITH_TAC;
+        ALL_TAC] THEN
+      FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+        let c = concl th in
+        can (find_term ((=) `read RIP s41`)) c && is_eq c &&
+        can (find_term (fun t -> try fst(dest_const t) = "COND" with _ -> false)) (rhs c))) THEN
+      X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC [42;43] THEN
+      SUBGOAL_THEN `read RIP s43 = word(pc + 196):int64` ASSUME_TAC THENL
+       [FIRST_X_ASSUM(fun th ->
+          if can (find_term ((=) `read RIP s43`)) (concl th) && is_eq(concl th)
+          then SUBST1_TAC th else failwith "") THEN
+        MATCH_MP_TAC(TAUT `~p ==> (if p then a else b) = b`) THEN
+        REWRITE_TAC[NOT_CLAUSES; DE_MORGAN_THM;
+                    VAL_WORD_ZX_GEN; VAL_WORD_SUB_CASES; VAL_WORD_ADD; VAL_WORD;
+                    DIMINDEX_32; DIMINDEX_64] THEN
+        CONV_TAC NUM_REDUCE_CONV THEN
+        SUBGOAL_THEN `24 * N < 4294967296 /\ 24 * N < 18446744073709551616`
+          STRIP_ASSUME_TAC THENL
+         [UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC; ALL_TAC] THEN
+        ASM_SIMP_TAC[MOD_LT] THEN
+        UNDISCH_TAC `24 * N <= 832` THEN ARITH_TAC;
+        ALL_TAC] THEN
+      REPEAT CHEAT_TAC]]);;

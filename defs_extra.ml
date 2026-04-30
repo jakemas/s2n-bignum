@@ -221,4 +221,17 @@ let REJ_SAMPLE_PREFIX_256 = prove
   MATCH_MP_TAC SUB_LIST_REFL THEN
   ASM_REWRITE_TAC[LE_REFL]);;
 
+(* When 256 <= LENGTH (REJ_SAMPLE prefix), SUB_LIST (0,256) of the full REJ_SAMPLE
+   equals SUB_LIST (0,256) of just the REJ_SAMPLE of the prefix. *)
+let REJ_SAMPLE_SUBLIST_256_BOUNDED = prove
+ (`!(inlist:(24 word)list) k.
+    256 <= LENGTH(REJ_SAMPLE (SUB_LIST (0,k) inlist))
+    ==> SUB_LIST (0,256) (REJ_SAMPLE inlist) =
+        SUB_LIST (0,256) (REJ_SAMPLE (SUB_LIST (0,k) inlist))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`inlist:(24 word)list`; `k:num`] REJ_SAMPLE_SPLIT) THEN
+  DISCH_THEN(fun th -> GEN_REWRITE_TAC (LAND_CONV o RAND_CONV) [th]) THEN
+  MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
+  ASM_REWRITE_TAC[]);;
+
 Printf.printf "=== defs_extra loaded ===\n%!";;
