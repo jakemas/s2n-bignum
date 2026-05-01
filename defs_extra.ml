@@ -234,4 +234,27 @@ let REJ_SAMPLE_SUBLIST_256_BOUNDED = prove
   MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
   ASM_REWRITE_TAC[]);;
 
+(* Monotonicity: one more input element adds at most 1 to REJ_SAMPLE length. *)
+let REJ_SAMPLE_STEP_LE = prove
+ (`!(l:(24 word)list) k.
+    LENGTH (REJ_SAMPLE (SUB_LIST (0, k + 1) l)) <=
+    LENGTH (REJ_SAMPLE (SUB_LIST (0, k) l)) + 1`,
+  REPEAT GEN_TAC THEN
+  ASM_CASES_TAC `k + 1 <= LENGTH (l:(24 word)list)` THENL
+   [MP_TAC(ISPECL [`l:(24 word)list`; `k:num`; `1:num`; `0:num`] SUB_LIST_SPLIT) THEN
+    REWRITE_TAC[ADD_CLAUSES] THEN
+    DISCH_THEN SUBST1_TAC THEN
+    REWRITE_TAC[REJ_SAMPLE_APPEND; LENGTH_APPEND; LE_ADD_LCANCEL] THEN
+    REWRITE_TAC[REJ_SAMPLE] THEN
+    W(MP_TAC o PART_MATCH lhand LENGTH_FILTER o lhand o snd) THEN
+    MATCH_MP_TAC(REWRITE_RULE[IMP_CONJ_ALT] LE_TRANS) THEN
+    REWRITE_TAC[LENGTH_MAP; LENGTH_SUB_LIST] THEN ARITH_TAC;
+    SUBGOAL_THEN `SUB_LIST (0, k + 1) (l:(24 word)list) = l /\
+                  LENGTH (l:(24 word)list) <= k`
+      (fun th -> SUBST1_TAC(CONJUNCT1 th) THEN
+                 ASM_SIMP_TAC[SUB_LIST_REFL; CONJUNCT2 th] THEN ARITH_TAC) THEN
+    CONJ_TAC THENL
+     [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_ARITH_TAC;
+      ASM_ARITH_TAC]]);;
+
 Printf.printf "=== defs_extra loaded ===\n%!";;
