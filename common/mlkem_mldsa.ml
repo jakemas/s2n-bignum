@@ -2007,6 +2007,7 @@ let DIV_SANDWICH = prove(
   SUBGOAL_THEN `x DIV d < k + 1` ASSUME_TAC THENL
   [ASM_SIMP_TAC[RDIV_LT_EQ] THEN ASM_ARITH_TAC; ASM_ARITH_TAC]);;
 
+let INT_MOD_RESIDUE = prove(
   `!r m. ~(m = 0) ==> (&r:int) - &(r DIV m) * &m = &(r MOD m)`,
   REPEAT GEN_TAC THEN DISCH_TAC THEN
   MP_TAC(SPECL [`r:num`; `m:num`] (CONJUNCT1 DIVISION_SIMP)) THEN
