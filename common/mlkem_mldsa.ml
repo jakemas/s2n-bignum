@@ -1994,3 +1994,22 @@ let REAL_INT_GT_BRIDGE_POS = prove(
    MP_TAC(REWRITE_RULE[GSYM REAL_OF_NUM_LT; GSYM REAL_OF_NUM_MUL] (ASSUME `b * c < a`)) THEN REAL_ARITH_TAC;
    REWRITE_TAC[INT_GT] THEN
    MP_TAC(REWRITE_RULE[GSYM INT_OF_NUM_LT; GSYM INT_OF_NUM_MUL] (ASSUME `b * c < a`)) THEN INT_ARITH_TAC]);;
+
+(* ========================================================================= *)
+(* Shared helper lemmas for UseHint proofs                                   *)
+(* ========================================================================= *)
+
+let DIV_SANDWICH = prove(
+  `!x d k. ~(d = 0) /\ k * d <= x /\ x < (k + 1) * d ==> x DIV d = k`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN `k <= x DIV d` ASSUME_TAC THENL
+  [ASM_SIMP_TAC[LE_RDIV_EQ] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `x DIV d < k + 1` ASSUME_TAC THENL
+  [ASM_SIMP_TAC[RDIV_LT_EQ] THEN ASM_ARITH_TAC; ASM_ARITH_TAC]);;
+
+  `!r m. ~(m = 0) ==> (&r:int) - &(r DIV m) * &m = &(r MOD m)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(SPECL [`r:num`; `m:num`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  REWRITE_TAC[GSYM INT_OF_NUM_MUL; GSYM INT_OF_NUM_ADD;
+              GSYM INT_OF_NUM_EQ] THEN
+  INT_ARITH_TAC);;

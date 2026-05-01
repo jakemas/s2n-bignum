@@ -224,14 +224,6 @@ let A1_BOUND_NOWRAP_88 = prove(
    CONV_TAC NUM_REDUCE_CONV THEN ARITH_TAC]);;
 
 (* Barrett equivalence for _88: 45-interval case analysis *)
-let DIV_SANDWICH = prove(
-  `!x d k. ~(d = 0) /\ k * d <= x /\ x < (k + 1) * d ==> x DIV d = k`,
-  REPEAT GEN_TAC THEN STRIP_TAC THEN
-  SUBGOAL_THEN `k <= x DIV d` ASSUME_TAC THENL
-  [ASM_SIMP_TAC[LE_RDIV_EQ] THEN ASM_ARITH_TAC; ALL_TAC] THEN
-  SUBGOAL_THEN `x DIV d < k + 1` ASSUME_TAC THENL
-  [ASM_SIMP_TAC[RDIV_LT_EQ] THEN ASM_ARITH_TAC; ASM_ARITH_TAC]);;
-
 let BARRETT_INTERVAL_88 = prove(
   `!a lo hi k.
     lo <= a /\ a <= hi /\
@@ -609,3 +601,474 @@ let MLDSA_USE_HINT_88_SUBROUTINE_SAFE = time prove
   ASSERT_CONCL_TAC full_spec THEN
   PROVE_SAFETY_SPEC_TAC ~public_vars:public_vars MLDSA_USE_HINT_88_EXEC);;
 
+
+(* ========================================================================= *)
+(* FIPS 204 definitions and equivalence (after safety proof)                 *)
+(* ========================================================================= *)
+
+let mldsa_cmod = new_definition
+  `mldsa_cmod (r:num) (m:num) : int =
+   if (r MOD m) * 2 <= m then &(r MOD m) else &(r MOD m) - &m`;;
+
+let mldsa_decompose_88 = new_definition
+  `mldsa_decompose_88 (r:num) : num # int =
+   let r0 = mldsa_cmod r 190464 in
+   if &r - r0 = &8380416 then (0, r0 - &1)
+   else (num_of_int((&r - r0) div &190464), r0)`;;
+
+let decompose_88_r1 = new_definition
+  `decompose_88_r1 (r:num) : num = FST(mldsa_decompose_88 r)`;;
+
+let decompose_88_r0 = new_definition
+  `decompose_88_r0 (r:num) : int = SND(mldsa_decompose_88 r)`;;
+
+let mldsa_use_hint_88 = new_definition
+  `mldsa_use_hint_88 (h:num) (r:num) : num =
+   let (r1, r0) = mldsa_decompose_88 r in
+   if h = 1 /\ r0 > &0 then if r1 = 43 then 0 else r1 + 1
+   else if h = 1 /\ r0 <= &0 then if r1 = 0 then 43 else r1 - 1
+   else r1`;;
+
+let LOWER_NONWRAP_R1_88 = prove(
+  `!r. r MOD 190464 * 2 <= 190464 /\
+       ~((&r:int) - &(r MOD 190464) = &8380416) ==>
+   decompose_88_r1 r = r DIV 190464`,
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_DIV;
+               NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
+  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  DISCH_TAC THEN
+  SUBGOAL_THEN `r - r MOD 190464 = 190464 * r DIV 190464` SUBST1_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL [`190464`; `r DIV 190464`] DIV_MULT) THEN
+  CONV_TAC NUM_REDUCE_CONV);;
+
+let UPPER_NONWRAP_R1_88 = prove(
+  `!r. ~(r MOD 190464 * 2 <= 190464) /\
+       ~((&r:int) - (&(r MOD 190464) - &190464) = &8380416) ==>
+   decompose_88_r1 r = r DIV 190464 + 1`,
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(&r:int) - (&(r MOD 190464) - &190464) =
+                &(r - r MOD 190464 + 190464)` ASSUME_TAC THENL
+  [ASM_SIMP_TAC[GSYM INT_OF_NUM_SUB; GSYM INT_OF_NUM_ADD] THEN
+   INT_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[INT_OF_NUM_DIV; NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
+  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  DISCH_TAC THEN
+  SUBGOAL_THEN `r - r MOD 190464 + 190464 = (r DIV 190464 + 1) * 190464`
+    ASSUME_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  MP_TAC(SPECL [`(r DIV 190464 + 1) * 190464`; `190464`] DIV_MULT) THEN
+  ARITH_TAC);;
+
+(* Unfold mldsa_use_hint_88 eliminating the paired let *)
+let MLDSA_USE_HINT_88_UNFOLD = prove(
+  `!h r. mldsa_use_hint_88 h r =
+   (if h = 1 /\ decompose_88_r0 r > &0
+    then if decompose_88_r1 r = 43 then 0 else decompose_88_r1 r + 1
+    else if h = 1 /\ decompose_88_r0 r <= &0
+    then if decompose_88_r1 r = 0 then 43 else decompose_88_r1 r - 1
+    else decompose_88_r1 r)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[mldsa_use_hint_88; decompose_88_r1; decompose_88_r0] THEN
+  SPEC_TAC(`mldsa_decompose_88 r`, `p:num#int`) THEN
+  REWRITE_TAC[FORALL_PAIR_THM] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[]);;
+
+
+(* ========================================================================= *)
+(* FIPS 204 = code-aligned equivalence                                       *)
+(* ========================================================================= *)
+
+let LINEARIZE_DIV_MOD_TAC_88 =
+  REPEAT(FIRST_X_ASSUM(MP_TAC o check (fun th ->
+    free_in `r MOD 190464` (concl th) ||
+    free_in `r DIV 190464` (concl th)))) THEN
+  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  SPEC_TAC(`r MOD 190464`, `m:num`) THEN
+  SPEC_TAC(`r DIV 190464`, `q:num`) THEN
+  REPEAT GEN_TAC THEN ASM_ARITH_TAC;;
+
+(* Prove r DIV 190464 = k via DIV_SANDWICH + LE_MULT_RCANCEL *)
+let DIV_190464_TAC k =
+  let k_num = mk_small_numeral k and km1 = mk_small_numeral (k-1)
+  and kp1 = mk_small_numeral (k+1)
+  and q = mk_var("q",`:num`) and le = `(<=):num->num->bool`
+  and lt = `(<):num->num->bool`
+  and c = `190464` in
+  let mk_mul a b = mk_binop (rator(rator `0*0`)) a b in
+  MATCH_MP_TAC DIV_SANDWICH THEN CONV_TAC NUM_REDUCE_CONV THEN
+  REPEAT(FIRST_X_ASSUM(MP_TAC o check (fun th ->
+    free_in `r MOD 190464` (concl th) ||
+    free_in `r DIV 190464` (concl th)))) THEN
+  MP_TAC(SPECL [`r:num`; c] (CONJUNCT1 DIVISION_SIMP)) THEN
+  SPEC_TAC(`r MOD 190464`, `m:num`) THEN
+  SPEC_TAC(`r DIV 190464`, q) THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_CASES_TAC(mk_comb(mk_comb(le, q), km1)) THENL
+  [SUBGOAL_THEN(mk_comb(mk_comb(le, mk_mul q c),
+                mk_mul km1 c)) ASSUME_TAC THENL
+   [ASM_SIMP_TAC[LE_MULT_RCANCEL]; ALL_TAC] THEN
+   CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC;
+   SUBGOAL_THEN(mk_comb(mk_comb(le, mk_mul k_num c),
+                mk_mul q c)) ASSUME_TAC THENL
+   [ASM_SIMP_TAC[LE_MULT_RCANCEL] THEN DISJ1_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+   ASM_CASES_TAC(mk_comb(mk_comb(lt, k_num), q)) THENL
+   [SUBGOAL_THEN(mk_comb(mk_comb(le, mk_mul kp1 c),
+                 mk_mul q c)) ASSUME_TAC THENL
+    [ASM_SIMP_TAC[LE_MULT_RCANCEL] THEN DISJ1_TAC THEN ASM_ARITH_TAC;
+     ALL_TAC] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC;
+    CONV_TAC NUM_REDUCE_CONV THEN ASM_ARITH_TAC]];;
+
+(* Replace (r - r MOD 190464) DIV 190464 with r DIV 190464 *)
+let DIV_MOD_TO_DIV_TAC_88 =
+  SUBGOAL_THEN `(r - r MOD 190464) DIV 190464 = r DIV 190464` SUBST1_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+   DISCH_TAC THEN
+   SUBGOAL_THEN `r - r MOD 190464 = 190464 * r DIV 190464` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+   MP_TAC(SPECL [`190464`; `r DIV 190464`] DIV_MULT) THEN
+   CONV_TAC NUM_REDUCE_CONV; ALL_TAC];;
+
+(* Lower half nowrap: dismiss wrap cond, reduce, prove r DIV 190464 = k *)
+let DECOMPOSE_R1_LOWER_TAC_88 =
+  SUBGOAL_THEN `~((&r:int) - &(r MOD 190464) = &8380416)` (fun th -> REWRITE_TAC[th]) THENL
+  [ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_EQ] THEN LINEARIZE_DIV_MOD_TAC_88;
+   ALL_TAC] THEN
+  ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_DIV; NUM_OF_INT_OF_NUM] THEN
+  DIV_MOD_TO_DIV_TAC_88 THEN
+  CONV_TAC SYM_CONV THEN
+  LINEARIZE_DIV_MOD_TAC_88;;
+
+(* Upper half nowrap: dismiss wrap cond, reduce, prove r DIV 190464 + 1 = k *)
+let DECOMPOSE_R1_UPPER_TAC_88 =
+  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `~((&r:int) - (&(r MOD 190464) - &190464) = &8380416)` (fun th -> REWRITE_TAC[th]) THENL
+  [REWRITE_TAC[INT_ARITH `(a:int) - (b - c) = d <=> a + c - b = d`] THEN
+   ASM_SIMP_TAC[GSYM INT_OF_NUM_ADD; GSYM INT_OF_NUM_SUB; INT_OF_NUM_EQ] THEN
+   LINEARIZE_DIV_MOD_TAC_88; ALL_TAC] THEN
+  SUBGOAL_THEN `(&r:int) - (&(r MOD 190464) - &190464) =
+                &(r - r MOD 190464 + 190464)` SUBST1_TAC THENL
+  [ASM_SIMP_TAC[GSYM INT_OF_NUM_SUB; GSYM INT_OF_NUM_ADD] THEN
+   INT_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[INT_OF_NUM_DIV; NUM_OF_INT_OF_NUM] THEN
+  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  DISCH_TAC THEN
+  SUBGOAL_THEN `r - r MOD 190464 + 190464 = 190464 * (r DIV 190464 + 1)`
+    SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL [`190464`; `r DIV 190464 + 1`] DIV_MULT) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN DISCH_THEN SUBST1_TAC THEN
+  REPEAT(FIRST_X_ASSUM(MP_TAC o check (fun th ->
+    free_in `r MOD 190464` (concl th) ||
+    free_in `r DIV 190464` (concl th)))) THEN
+  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  SPEC_TAC(`r MOD 190464`, `m:num`) THEN
+  SPEC_TAC(`r DIV 190464`, `q:num`) THEN
+  REPEAT GEN_TAC THEN ASM_ARITH_TAC;;
+
+let DECOMPOSE_R1_NOWRAP_TAC_88 =
+  ASM_CASES_TAC `r MOD 190464 * 2 <= 190464` THEN ASM_REWRITE_TAC[] THEN
+  TRY DECOMPOSE_R1_LOWER_TAC_88 THEN TRY DECOMPOSE_R1_UPPER_TAC_88;;
+
+let DECOMPOSE_88_R1_EQUIV = time prove(
+  `!r. r < 8380417 ==>
+   (let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+    if a1_raw > 43 then 0 else a1_raw) =
+   decompose_88_r1 r`,
+  GEN_TAC THEN DISCH_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  ASM_CASES_TAC `r <= 8285184` THENL
+  [ALL_TAC;
+   (* Wrap zone *)
+   SUBGOAL_THEN `8285184 < r` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+   SUBGOAL_THEN `decompose_88_r1 r = 0` SUBST1_TAC THENL
+   [REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+    [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+    SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
+    [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC;
+     ALL_TAC] THEN
+    ASM_CASES_TAC `r MOD 190464 * 2 <= 190464` THEN ASM_REWRITE_TAC[] THENL
+    [(* Lower wrap: r DIV 190464 = 44 *)
+     SUBGOAL_THEN `r DIV 190464 = 44` ASSUME_TAC THENL
+     [DIV_190464_TAC 44; ALL_TAC] THEN
+     SUBGOAL_THEN `44 * 190464 + r MOD 190464 = r` MP_TAC THENL
+     [MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+      ASM_ARITH_TAC; ALL_TAC] THEN
+     DISCH_TAC THEN ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_EQ] THEN
+     ASM_ARITH_TAC;
+     (* Upper wrap: r DIV 190464 = 43 *)
+     SUBGOAL_THEN `r DIV 190464 = 43` ASSUME_TAC THENL
+     [DIV_190464_TAC 43; ALL_TAC] THEN
+     SUBGOAL_THEN `43 * 190464 + r MOD 190464 = r` MP_TAC THENL
+     [MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
+      ASM_ARITH_TAC; ALL_TAC] THEN
+     DISCH_TAC THEN
+     SUBGOAL_THEN `(&r:int) - (&(r MOD 190464) - &190464) =
+                   &(r - r MOD 190464 + 190464)` SUBST1_TAC THENL
+     [ASM_SIMP_TAC[GSYM INT_OF_NUM_SUB; GSYM INT_OF_NUM_ADD] THEN
+      INT_ARITH_TAC; ALL_TAC] THEN
+     REWRITE_TAC[INT_OF_NUM_EQ] THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+   MP_TAC(SPEC `r:num` A1_WRAP_88) THEN
+   ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+   DISCH_THEN SUBST1_TAC THEN CONV_TAC NUM_REDUCE_CONV] THEN
+  (* Nowrap zone: Barrett <= 43, so if > 43 then 0 else Barrett = Barrett *)
+  SUBGOAL_THEN `((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 <= 43`
+    ASSUME_TAC THENL
+  [MATCH_MP_TAC A1_BOUND_NOWRAP_88 THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  SUBGOAL_THEN `~(((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 > 43)`
+    (fun th -> REWRITE_TAC[th]) THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  (* Nowrap zone: unfold and do interval cascade *)
+  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
+  let intervals = [
+    (0, 95232); (95233, 285696); (285697, 476160); (476161, 666624);
+    (666625, 857088); (857089, 1047552); (1047553, 1238016);
+    (1238017, 1428480); (1428481, 1618944); (1618945, 1809408);
+    (1809409, 1999872); (1999873, 2190336); (2190337, 2380800);
+    (2380801, 2571264); (2571265, 2761728); (2761729, 2952192);
+    (2952193, 3142656); (3142657, 3333120); (3333121, 3523584);
+    (3523585, 3714048); (3714049, 3904512); (3904513, 4094976);
+    (4094977, 4285440); (4285441, 4475904); (4475905, 4666368);
+    (4666369, 4856832); (4856833, 5047296); (5047297, 5237760);
+    (5237761, 5428224); (5428225, 5618688); (5618689, 5809152);
+    (5809153, 5999616); (5999617, 6190080); (6190081, 6380544);
+    (6380545, 6571008); (6571009, 6761472); (6761473, 6951936);
+    (6951937, 7142400); (7142401, 7332864); (7332865, 7523328);
+    (7523329, 7713792); (7713793, 7904256); (7904257, 8094720);
+    (8094721, 8285184)] in
+  let mk_le hi =
+    mk_comb(mk_comb(`(<=):num->num->bool`, mk_var("r",`:num`)),
+            mk_small_numeral hi) in
+  let apply_interval k (lo, hi) =
+    let th = SPECL [`r:num`; mk_small_numeral lo;
+                    mk_small_numeral hi; mk_small_numeral k]
+                   BARRETT_INTERVAL_88 in
+    MP_TAC th THEN CONV_TAC NUM_REDUCE_CONV THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    DECOMPOSE_R1_NOWRAP_TAC_88 in
+  let rec cascade k = function
+    | [(lo,hi)] -> apply_interval k (lo,hi)
+    | (lo,hi)::rest ->
+        ASM_CASES_TAC (mk_le hi) THENL
+        [apply_interval k (lo,hi); cascade (k+1) rest]
+    | [] -> failwith "empty" in
+  cascade 0 intervals);;
+
+let R1_IS_DIV_LOWER_88 = prove(
+  `!r. r < 8380417 /\ r MOD 190464 * 2 <= 190464 /\
+       ~((&r:int) - &(r MOD 190464) = &8380416) ==>
+   (let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+    if a1_raw > 43 then 0 else a1_raw) = r DIV 190464`,
+  GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPEC `r:num` DECOMPOSE_88_R1_EQUIV) THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  MP_TAC(SPEC `r:num` LOWER_NONWRAP_R1_88) THEN ASM_REWRITE_TAC[] THEN
+  REPEAT DISCH_TAC THEN ASM_REWRITE_TAC[]);;
+
+let R1_IS_DIV_PLUS1_UPPER_88 = prove(
+  `!r. r < 8380417 /\ ~(r MOD 190464 * 2 <= 190464) /\
+       ~((&r:int) - (&(r MOD 190464) - &190464) = &8380416) ==>
+   (let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+    if a1_raw > 43 then 0 else a1_raw) = r DIV 190464 + 1`,
+  GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPEC `r:num` DECOMPOSE_88_R1_EQUIV) THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  MP_TAC(SPEC `r:num` UPPER_NONWRAP_R1_88) THEN ASM_REWRITE_TAC[] THEN
+  REPEAT DISCH_TAC THEN ASM_REWRITE_TAC[]);;
+
+(* Upper nowrap: substitute Barrett = r DIV 190464 + 1, use INT_MOD_RESIDUE *)
+let R0_SIGN_UPPER_NOWRAP_TAC_88 =
+  MP_TAC(SPEC `r:num` R1_IS_DIV_PLUS1_UPPER_88) THEN
+  ANTS_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(CONV_RULE NUM_REDUCE_CONV (SPECL [`r:num`; `190464`] INT_MOD_RESIDUE)) THEN
+  REWRITE_TAC[GSYM INT_OF_NUM_ADD; GSYM INT_OF_NUM_MUL] THEN
+  DISCH_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[INT_ARITH `(a:int) - (b + &1) * c = a - b * c - c`] THEN
+  REWRITE_TAC[INT_ARITH `x - &190464 > &0 <=> x > &190464`;
+              INT_ARITH `x - &190464 - &8380417 > &0 <=> x > &8570881`;
+              INT_OF_NUM_GT] THEN
+  ASM_ARITH_TAC;;
+
+(* Lower nowrap: substitute Barrett = r DIV 190464, use INT_MOD_RESIDUE *)
+let R0_SIGN_LOWER_NOWRAP_TAC_88 =
+  MP_TAC(SPEC `r:num` R1_IS_DIV_LOWER_88) THEN
+  ANTS_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(CONV_RULE NUM_REDUCE_CONV (SPECL [`r:num`; `190464`] INT_MOD_RESIDUE)) THEN
+  DISCH_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[INT_ARITH `x - &8380417 > &0 <=> x > &8380417`;
+              INT_OF_NUM_GT] THEN
+  ASM_ARITH_TAC;;
+
+(* Wrap: derive 8285184 < r, use DECOMPOSE_88_R1_EQUIV to get Barrett = 0 *)
+let R0_SIGN_WRAP_TAC_88 =
+  SUBGOAL_THEN `8285184 < r` ASSUME_TAC THENL
+  [FIRST_X_ASSUM(MP_TAC o check (fun th ->
+     can (find_term (fun t -> t = `&8380416:int`)) (concl th) &&
+     not(is_neg(concl th)))) THEN
+   ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_EQ;
+     INT_ARITH `(a:int) - (b - c) = d <=> a + c - b = d`;
+     GSYM INT_OF_NUM_ADD] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(SPEC `r:num` DECOMPOSE_88_R1_EQUIV) THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_TAC THEN ASM_REWRITE_TAC[INT_MUL_LZERO; INT_SUB_RZERO] THEN
+  REWRITE_TAC[INT_ARITH `x - &1 > &0 <=> x > &1`;
+              INT_ARITH `(x - &190464) - &1 > &0 <=> x > &190465`;
+              INT_ARITH `x - &8380417 > &0 <=> x > &8380417`;
+              INT_OF_NUM_GT] THEN
+  ASM_ARITH_TAC;;
+
+let DECOMPOSE_88_R0_SIGN = time prove(
+  `!r. r < 8380417 ==>
+    let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+    let a1 = if a1_raw > 43 then 0 else a1_raw in
+    let a0':int = if (&r:int) - &a1 * &190464 > &4190208
+                  then &r - &a1 * &190464 - &8380417
+                  else &r - &a1 * &190464 in
+    (decompose_88_r0 r > &0 <=> a0' > &0) /\
+    (decompose_88_r0 r <= &0 <=> ~(a0' > &0))`,
+  GEN_TAC THEN DISCH_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[INT_ARITH `(x:int) <= &0 <=> ~(x > &0)`] THEN
+  MATCH_MP_TAC(TAUT `(p <=> q) ==> (p <=> q) /\ (~p <=> ~q)`) THEN
+  REWRITE_TAC[decompose_88_r0; mldsa_decompose_88; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  ONCE_REWRITE_TAC[COND_RAND] THEN REWRITE_TAC[SND; FST] THEN
+  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
+  ASM_CASES_TAC `r MOD 190464 * 2 <= 190464` THEN ASM_REWRITE_TAC[] THEN
+  COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN
+  COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN
+  TRY R0_SIGN_LOWER_NOWRAP_TAC_88 THEN
+  TRY R0_SIGN_UPPER_NOWRAP_TAC_88 THEN
+  TRY R0_SIGN_WRAP_TAC_88 THEN
+  TRY(
+    (* Contradiction: lower nowrap with > 4190208 *)
+    MP_TAC(SPEC `r:num` R1_IS_DIV_LOWER_88) THEN
+    ANTS_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN DISCH_TAC THEN
+    MP_TAC(CONV_RULE NUM_REDUCE_CONV
+      (SPECL [`r:num`; `190464`] INT_MOD_RESIDUE)) THEN
+    DISCH_TAC THEN
+    SUBGOAL_THEN `(&r:int) - &((let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+      if a1_raw > 43 then 0 else a1_raw)) * &190464 = &(r MOD 190464)` ASSUME_TAC THENL
+    [CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    SUBGOAL_THEN `~(&(r MOD 190464) > (&4190208:int))` MP_TAC THENL
+    [REWRITE_TAC[INT_NOT_LT; INT_OF_NUM_LE] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    ASM_REWRITE_TAC[] THEN REWRITE_TAC[INT_OF_NUM_GT] THEN ASM_ARITH_TAC
+  ));;
+
+(* R1 equivalence for _88 (needed for MLDSA_USE_HINT_88_EQUIV below).
+
+   Show decompose_88_r1 r equals the a1 value from the code-aligned spec:
+     let a1_raw = ((r + 127) DIV 128 * 11275 + 8388608) DIV 16777216 in
+     if a1_raw > 43 then 0 else a1_raw                                    *)
+
+let MLDSA_USE_HINT_88_EQUIV = prove(
+  `!r h. r < 8380417 /\ h <= 1
+         ==> mldsa_use_hint_88 h r = mldsa_use_hint_88_spec r h`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[MLDSA_USE_HINT_88_UNFOLD] THEN
+  REWRITE_TAC[mldsa_use_hint_88_spec] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  MP_TAC(SPEC `r:num` DECOMPOSE_88_R1_EQUIV) THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  DISCH_TAC THEN
+  MP_TAC(SPEC `r:num` DECOMPOSE_88_R0_SIGN) THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN STRIP_TAC THEN
+  ASM_CASES_TAC `h = 0` THENL
+  [ASM_REWRITE_TAC[ARITH_RULE `~(0 = 1)`]; ALL_TAC] THEN
+  SUBGOAL_THEN `h = 1` SUBST_ALL_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ASM_CASES_TAC `decompose_88_r0 r > &0` THEN ASM_REWRITE_TAC[] THEN
+  COND_CASES_TAC THEN ASM_REWRITE_TAC[]);;
+
+let ENSURES_STRENGTHEN_POST = prove(
+  `!P (Q:armstate->bool) Q' R.
+     ensures arm P Q' R /\ (!s. Q' s ==> Q s) ==> ensures arm P Q R`,
+  REPEAT GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 MP_TAC ASSUME_TAC) THEN
+  REWRITE_TAC[ensures] THEN MATCH_MP_TAC MONO_FORALL THEN
+  X_GEN_TAC `s0:armstate` THEN MATCH_MP_TAC MONO_IMP THEN REWRITE_TAC[] THEN
+  MP_TAC(BETA_RULE(ISPECL [`arm`;
+    `\s':armstate. (Q':armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`;
+    `\s':armstate. (Q:armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`]
+    EVENTUALLY_MONO)) THEN
+  ANTS_TAC THENL [ASM_MESON_TAC[]; MESON_TAC[]]);;
+
+(* FIPS 204-aligned subroutine correctness.
+   Derived from the code-aligned SUBROUTINE_CORRECT by rewriting
+   mldsa_use_hint_88_spec -> mldsa_use_hint_88 via MLDSA_USE_HINT_88_EQUIV. *)
+let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_FIPS204 = prove
+ (`!b a h x y pc returnaddress.
+    nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_88_mc) (b, 1024) /\
+    nonoverlapping (b, 1024) (a, 1024) /\
+    nonoverlapping (b, 1024) (h, 1024) /\
+    (!i. i < 256 ==> val((x:num->int32) i) < 8380417) /\
+    (!i. i < 256 ==> val((y:num->int32) i) <= 1)
+    ==> ensures arm
+          (\s. aligned_bytes_loaded s (word pc) mldsa_poly_use_hint_88_mc /\
+               read PC s = word pc /\
+               read X30 s = returnaddress /\
+               C_ARGUMENTS [b; a; h] s /\
+               (!i. i < 256 ==> val(x i) < 8380417) /\
+               (!i. i < 256 ==> val(y i) <= 1) /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add a (word(4 * i)))) s = x i) /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add h (word(4 * i)))) s = y i))
+          (\s. read PC s = returnaddress /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add b (word(4 * i)))) s =
+                   word(mldsa_use_hint_88 (val(y i)) (val(x i)))))
+          (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(b, 1024)])`,
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  SUBGOAL_THEN
+    `!i. i < 256 ==>
+         mldsa_use_hint_88 (val((y:num->int32) i)) (val((x:num->int32) i)) =
+         mldsa_use_hint_88_spec (val(x i)) (val(y i))`
+    (fun th -> SIMP_TAC[th]) THENL
+  [REPEAT STRIP_TAC THEN MATCH_MP_TAC MLDSA_USE_HINT_88_EQUIV THEN
+   CONJ_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+   MATCH_MP_TAC ENSURES_STRENGTHEN_POST THEN
+   EXISTS_TAC
+    `\s. read PC s = returnaddress /\
+         (!i. i < 256 ==>
+           read(memory :> bytes32(word_add b (word(4 * i)))) s =
+             word(mldsa_use_hint_88_spec (val(x i:int32)) (val(y i:int32)))) /\
+         (!i. i < 256 ==>
+           val(read(memory :> bytes32(word_add b (word(4 * i)))) s) < 44)` THEN
+   CONJ_TAC THENL
+   [MATCH_MP_TAC MLDSA_USE_HINT_88_SUBROUTINE_CORRECT THEN
+    ASM_REWRITE_TAC[];
+    GEN_TAC THEN CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+    DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+    ASM_REWRITE_TAC[]]]);;
