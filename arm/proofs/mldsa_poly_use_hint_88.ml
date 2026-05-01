@@ -10,6 +10,7 @@
 needs "arm/proofs/base.ml";;
 needs "common/mlkem_mldsa.ml";;
 
+
 (**** print_literal_from_elf "arm/mldsa/mldsa_poly_use_hint_88.o";;
  ****)
 
@@ -99,22 +100,7 @@ let mldsa_poly_use_hint_88_mc = define_assert_from_elf
 
 let MLDSA_USE_HINT_88_EXEC = ARM_MK_EXEC_RULE mldsa_poly_use_hint_88_mc;;
 
-
-(* ========================================================================= *)
-(* Functional specification: UseHint for ML-DSA parameter set 44             *)
-(* GAMMA2 = (Q-1)/88 = 95232, 2*GAMMA2 = 190464, output range [0, 43]       *)
-(* ========================================================================= *)
-
-let mldsa_use_hint_88_spec = new_definition
-  `mldsa_use_hint_88_spec (a:num) (h:num) =
-   let a1_raw = ((((a + 127) DIV 128) * 11275 + 8388608) DIV 16777216) in
-   let a1 = if a1_raw > 43 then 0 else a1_raw in
-   let a0:int = &a - &a1 * &190464 in
-   let a0' = if a0 > &4190208 then a0 - &8380417 else a0 in
-   if h = 0 then a1
-   else if a0' > &0 then if a1 = 43 then 0 else a1 + 1
-   else if a1 = 0 then 43 else a1 - 1`;;
-
+(* Per-element word function matching the assembly computation *)
 let mldsa_use_hint_88_asm = new_definition
   `mldsa_use_hint_88_asm (a:int32) (h:int32) : int32 =
    let a1 = word_ishr_round (word_2smulh a (word 1477838209)) 17 in
@@ -127,12 +113,22 @@ let mldsa_use_hint_88_asm = new_definition
    let tmp' = word_and tmp (word_not neg_mask) in
    word_umin tmp' (word 43)`;;
 
+(* Numeric description of the assembly's UseHint path, exposing the Barrett
+   approximation used by the code. Connected to the FIPS 204 definition
+   mldsa_use_hint_88 via MLDSA_USE_HINT_88_EQUIV below. *)
+let mldsa_use_hint_88_code = new_definition
+  `mldsa_use_hint_88_code (a:num) (h:num) =
+   let a1_raw = ((((a + 127) DIV 128) * 11275 + 8388608) DIV 16777216) in
+   let a1 = if a1_raw > 43 then 0 else a1_raw in
+   let a0:int = &a - &a1 * &190464 in
+   let a0' = if a0 > &4190208 then a0 - &8380417 else a0 in
+   if h = 0 then a1
+   else if a0' > &0 then if a1 = 43 then 0 else a1 + 1
+   else if a1 = 0 then 43 else a1 - 1`;;
+
 (* ========================================================================= *)
 (* Helper lemmas                                                              *)
 (* ========================================================================= *)
-
-let IVAL_SMALL = MLDSA_IVAL_VAL;;
-let VAL_IWORD_NUM = VAL_IWORD_NUM_32;;
 
 let WORD_2SMULH_NOSATURATE_88 = prove(
   `!a:int32. val a < 8380417
@@ -140,7 +136,7 @@ let WORD_2SMULH_NOSATURATE_88 = prove(
        iword((&2 * &(val a) * &1477838209) div &2 pow 32)`,
   GEN_TAC THEN DISCH_TAC THEN
   REWRITE_TAC[word_2smulh; DIMINDEX_32] THEN
-  ASM_SIMP_TAC[IVAL_SMALL] THEN
+  ASM_SIMP_TAC[MLDSA_IVAL_VAL] THEN
   CONV_TAC WORD_REDUCE_CONV THEN
   REWRITE_TAC[iword_saturate; word_INT_MIN; word_INT_MAX; DIMINDEX_32] THEN
   CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_REDUCE_CONV THEN
@@ -173,7 +169,7 @@ let VAL_DECOMPOSE_A1_88 = prove(
   ABBREV_TAC `t:int32 = iword(&((2 * val(a:int32) * 1477838209) DIV 4294967296))` THEN
   SUBGOAL_THEN `val(t:int32) = (2 * val(a:int32) * 1477838209) DIV 4294967296`
     ASSUME_TAC THENL
-  [EXPAND_TAC "t" THEN MATCH_MP_TAC VAL_IWORD_NUM THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  [EXPAND_TAC "t" THEN MATCH_MP_TAC VAL_IWORD_NUM_32 THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
   SUBGOAL_THEN `val(t:int32) < 2147483648` ASSUME_TAC THENL
   [ASM_REWRITE_TAC[]; ALL_TAC] THEN
   REWRITE_TAC[word_ishr_round] THEN CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV THEN
@@ -187,7 +183,7 @@ let VAL_DECOMPOSE_A1_88 = prove(
    TRANS_TAC LT_TRANS `(5767167 + 65536) DIV 131072 + 1` THEN CONJ_TAC THENL
    [MATCH_MP_TAC(ARITH_RULE `x <= y ==> x < y + 1`) THEN
     MATCH_MP_TAC DIV_MONO THEN ASM_ARITH_TAC; CONV_TAC NUM_REDUCE_CONV]; ALL_TAC] THEN
-  ASM_SIMP_TAC[VAL_IWORD_NUM] THEN MATCH_MP_TAC VAL_IWORD_NUM THEN
+  ASM_SIMP_TAC[VAL_IWORD_NUM_32] THEN MATCH_MP_TAC VAL_IWORD_NUM_32 THEN
   UNDISCH_THEN `val(t:int32) = (2 * val(a:int32) * 1477838209) DIV 4294967296`
     (SUBST1_TAC o SYM) THEN ASM_REWRITE_TAC[]);;
 
@@ -348,9 +344,9 @@ let WORD_IGT_43_TRUE = BITBLAST_RULE
 let ELEMENT_CORRECT_88 = prove(
   `!a:int32 h:int32.
      val a < 8380417 /\ val h <= 1
-     ==> val(mldsa_use_hint_88_asm a h) = mldsa_use_hint_88_spec (val a) (val h)`,
+     ==> val(mldsa_use_hint_88_asm a h) = mldsa_use_hint_88_code (val a) (val h)`,
   REPEAT GEN_TAC THEN STRIP_TAC THEN
-  REWRITE_TAC[mldsa_use_hint_88_asm; mldsa_use_hint_88_spec] THEN
+  REWRITE_TAC[mldsa_use_hint_88_asm; mldsa_use_hint_88_code] THEN
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   ABBREV_TAC `nv = ((val(a:int32) + 127) DIV 128 * 11275 + 8388608) DIV 16777216` THEN
   SUBGOAL_THEN `val(word_ishr_round (word_2smulh (a:int32) (word 1477838209)) 17 : int32) = nv` ASSUME_TAC THENL
@@ -442,17 +438,17 @@ let ELEMENT_CORRECT_WORD_88 = prove(
   `!a:int32 h:int32.
      val a < 8380417 /\ val h <= 1
      ==> mldsa_use_hint_88_asm a h =
-         word(mldsa_use_hint_88_spec (val a) (val h))`,
+         word(mldsa_use_hint_88_code (val a) (val h))`,
   REPEAT GEN_TAC THEN STRIP_TAC THEN
   GEN_REWRITE_TAC LAND_CONV [GSYM WORD_VAL] THEN
   AP_TERM_TAC THEN MP_TAC(SPECL [`a:int32`; `h:int32`] ELEMENT_CORRECT_88) THEN
   ASM_REWRITE_TAC[] THEN DISCH_THEN(fun th -> REWRITE_TAC[th]));;
 
 (* ========================================================================= *)
-(* Correctness proof with functional postcondition                           *)
+(* Correctness proof, code-aligned spec (intermediate)                       *)
 (* ========================================================================= *)
 
-let MLDSA_USE_HINT_88_CORRECT = prove
+let MLDSA_USE_HINT_88_CORRECT_CODE = prove
  (`!b a h x y pc.
     nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_88_mc) (b, 1024) /\
     nonoverlapping (b, 1024) (a, 1024) /\
@@ -467,10 +463,10 @@ let MLDSA_USE_HINT_88_CORRECT = prove
                  read(memory :> bytes32(word_add a (word(4 * i)))) s = x i) /\
                (!i. i < 256 ==>
                  read(memory :> bytes32(word_add h (word(4 * i)))) s = y i))
-          (\s. read PC s = word(pc + 0x130) /\
+          (\s. read PC s = word(pc + LENGTH mldsa_poly_use_hint_88_mc - 4) /\
                (!i. i < 256 ==>
                  read(memory :> bytes32(word_add b (word(4 * i)))) s =
-                   word(mldsa_use_hint_88_spec (val(x i)) (val(y i)))))
+                   word(mldsa_use_hint_88_code (val(x i)) (val(y i)))))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
            MAYCHANGE [memory :> bytes(b, 1024)])`,
 
@@ -532,10 +528,66 @@ let MLDSA_USE_HINT_88_CORRECT = prove
   CONJ_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ARITH_TAC);;
 
 (* ========================================================================= *)
-(* Subroutine form                                                           *)
+(* Subroutine form (intermediate, code-aligned)                              *)
 (* ========================================================================= *)
 
-let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT = prove
+let ENSURES_STRENGTHEN_POST = prove(
+  `!P (Q:armstate->bool) Q' R.
+     ensures arm P Q' R /\ (!s. Q' s ==> Q s) ==> ensures arm P Q R`,
+  REPEAT GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 MP_TAC ASSUME_TAC) THEN
+  REWRITE_TAC[ensures] THEN MATCH_MP_TAC MONO_FORALL THEN
+  X_GEN_TAC `s0:armstate` THEN MATCH_MP_TAC MONO_IMP THEN REWRITE_TAC[] THEN
+  MP_TAC(BETA_RULE(ISPECL [`arm`;
+    `\s':armstate. (Q':armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`;
+    `\s':armstate. (Q:armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`]
+    EVENTUALLY_MONO)) THEN
+  ANTS_TAC THENL [ASM_MESON_TAC[]; MESON_TAC[]]);;
+
+let MLDSA_USE_HINT_88_CORRECT_BOUND_CODE = prove
+ (`!b a h x y pc.
+    nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_88_mc) (b, 1024) /\
+    nonoverlapping (b, 1024) (a, 1024) /\
+    nonoverlapping (b, 1024) (h, 1024)
+    ==> ensures arm
+          (\s. aligned_bytes_loaded s (word pc) mldsa_poly_use_hint_88_mc /\
+               read PC s = word pc /\
+               C_ARGUMENTS [b; a; h] s /\
+               (!i. i < 256 ==> val(x i) < 8380417) /\
+               (!i. i < 256 ==> val(y i) <= 1) /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add a (word(4 * i)))) s = x i) /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add h (word(4 * i)))) s = y i))
+          (\s. read PC s = word(pc + LENGTH mldsa_poly_use_hint_88_mc - 4) /\
+               (!i. i < 256 ==>
+                 read(memory :> bytes32(word_add b (word(4 * i)))) s =
+                   word(mldsa_use_hint_88_code (val(x i)) (val(y i)))) /\
+               (!i. i < 256 ==>
+                 val(read(memory :> bytes32(word_add b (word(4 * i)))) s) < 44))
+          (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(b, 1024)])`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MATCH_MP_TAC ENSURES_STRENGTHEN_POST THEN
+  EXISTS_TAC
+   `\s. read PC s = word(pc + LENGTH mldsa_poly_use_hint_88_mc - 4) /\
+        (!i. i < 256 ==>
+          read(memory :> bytes32(word_add b (word(4 * i)))) s =
+            word(mldsa_use_hint_88_code (val(x i:int32)) (val(y i:int32))))` THEN
+  CONJ_TAC THENL
+  [MATCH_MP_TAC MLDSA_USE_HINT_88_CORRECT_CODE THEN ASM_REWRITE_TAC[];
+   REWRITE_TAC[] THEN REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+   FIRST_X_ASSUM(MP_TAC o SPEC `i:num`) THEN ASM_REWRITE_TAC[] THEN
+   DISCH_THEN SUBST1_TAC THEN REWRITE_TAC[VAL_WORD; DIMINDEX_32] THEN
+   CONV_TAC NUM_REDUCE_CONV THEN
+   MATCH_MP_TAC(ARITH_RULE `x < 44 ==> x MOD 4294967296 < 44`) THEN
+   REWRITE_TAC[mldsa_use_hint_88_code] THEN
+   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN ASM_ARITH_TAC]);;
+
+(* Intermediate subroutine correctness against the code-aligned spec.
+   Bridged to the public FIPS 204-aligned theorem below via
+   MLDSA_USE_HINT_88_EQUIV. *)
+let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_CODE = prove
  (`!b a h x y pc returnaddress.
     nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_88_mc) (b, 1024) /\
     nonoverlapping (b, 1024) (a, 1024) /\
@@ -554,137 +606,17 @@ let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT = prove
           (\s. read PC s = returnaddress /\
                (!i. i < 256 ==>
                  read(memory :> bytes32(word_add b (word(4 * i)))) s =
-                   word(mldsa_use_hint_88_spec (val(x i)) (val(y i)))))
+                   word(mldsa_use_hint_88_code (val(x i)) (val(y i)))) /\
+               (!i. i < 256 ==>
+                 val(read(memory :> bytes32(word_add b (word(4 * i)))) s) < 44))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
            MAYCHANGE [memory :> bytes(b, 1024)])`,
   REWRITE_TAC[fst MLDSA_USE_HINT_88_EXEC] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
   ARM_ADD_RETURN_NOSTACK_TAC MLDSA_USE_HINT_88_EXEC
-    (REWRITE_RULE[fst MLDSA_USE_HINT_88_EXEC]
-       MLDSA_USE_HINT_88_CORRECT));;
-
-(* ========================================================================= *)
-(* Constant-time and memory safety proof.                                    *)
-(* ========================================================================= *)
-
-needs "arm/proofs/consttime.ml";;
-needs "arm/proofs/subroutine_signatures.ml";;
-
-
-let full_spec,public_vars = mk_safety_spec
-    ~keep_maychanges:false
-    (assoc "mldsa_poly_use_hint_88" subroutine_signatures)
-    MLDSA_USE_HINT_88_SUBROUTINE_CORRECT
-    MLDSA_USE_HINT_88_EXEC;;
-
-let MLDSA_USE_HINT_88_SUBROUTINE_SAFE = time prove
- (`exists f_events.
-       forall e b a h pc returnaddress.
-           nonoverlapping (word pc,LENGTH mldsa_poly_use_hint_88_mc) (b,1024) /\
-           nonoverlapping (b,1024) (a,1024) /\
-           nonoverlapping (b,1024) (h,1024)
-           ==> ensures arm
-               (\s.
-                    aligned_bytes_loaded s (word pc)
-                    mldsa_poly_use_hint_88_mc /\
-                    read PC s = word pc /\
-                    read X30 s = returnaddress /\
-                    C_ARGUMENTS [b; a; h] s /\
-                    read events s = e)
-               (\s.
-                    read PC s = returnaddress /\
-                    (exists e2.
-                         read events s = APPEND e2 e /\
-                         e2 = f_events a h b pc returnaddress /\
-                         memaccess_inbounds e2 [a,1024; h,1024; b,1024]
-                         [b,1024]))
-               (\s s'. true)`,
-  ASSERT_CONCL_TAC full_spec THEN
-  PROVE_SAFETY_SPEC_TAC ~public_vars:public_vars MLDSA_USE_HINT_88_EXEC);;
-
-
-(* ========================================================================= *)
-(* FIPS 204 definitions and equivalence (after safety proof)                 *)
-(* ========================================================================= *)
-
-let mldsa_cmod = new_definition
-  `mldsa_cmod (r:num) (m:num) : int =
-   if (r MOD m) * 2 <= m then &(r MOD m) else &(r MOD m) - &m`;;
-
-let mldsa_decompose_88 = new_definition
-  `mldsa_decompose_88 (r:num) : num # int =
-   let r0 = mldsa_cmod r 190464 in
-   if &r - r0 = &8380416 then (0, r0 - &1)
-   else (num_of_int((&r - r0) div &190464), r0)`;;
-
-let decompose_88_r1 = new_definition
-  `decompose_88_r1 (r:num) : num = FST(mldsa_decompose_88 r)`;;
-
-let decompose_88_r0 = new_definition
-  `decompose_88_r0 (r:num) : int = SND(mldsa_decompose_88 r)`;;
-
-let mldsa_use_hint_88 = new_definition
-  `mldsa_use_hint_88 (h:num) (r:num) : num =
-   let (r1, r0) = mldsa_decompose_88 r in
-   if h = 1 /\ r0 > &0 then if r1 = 43 then 0 else r1 + 1
-   else if h = 1 /\ r0 <= &0 then if r1 = 0 then 43 else r1 - 1
-   else r1`;;
-
-let LOWER_NONWRAP_R1_88 = prove(
-  `!r. r MOD 190464 * 2 <= 190464 /\
-       ~((&r:int) - &(r MOD 190464) = &8380416) ==>
-   decompose_88_r1 r = r DIV 190464`,
-  GEN_TAC THEN STRIP_TAC THEN
-  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
-  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
-  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
-  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
-  ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_DIV;
-               NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
-  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
-  DISCH_TAC THEN
-  SUBGOAL_THEN `r - r MOD 190464 = 190464 * r DIV 190464` SUBST1_TAC THENL
-  [ASM_ARITH_TAC; ALL_TAC] THEN
-  MP_TAC(SPECL [`190464`; `r DIV 190464`] DIV_MULT) THEN
-  CONV_TAC NUM_REDUCE_CONV);;
-
-let UPPER_NONWRAP_R1_88 = prove(
-  `!r. ~(r MOD 190464 * 2 <= 190464) /\
-       ~((&r:int) - (&(r MOD 190464) - &190464) = &8380416) ==>
-   decompose_88_r1 r = r DIV 190464 + 1`,
-  GEN_TAC THEN STRIP_TAC THEN
-  REWRITE_TAC[decompose_88_r1; mldsa_decompose_88; mldsa_cmod] THEN
-  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
-  SUBGOAL_THEN `r MOD 190464 <= r` ASSUME_TAC THENL
-  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
-  SUBGOAL_THEN `r MOD 190464 < 190464` ASSUME_TAC THENL
-  [MP_TAC(SPECL [`r:num`; `190464`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
-  SUBGOAL_THEN `(&r:int) - (&(r MOD 190464) - &190464) =
-                &(r - r MOD 190464 + 190464)` ASSUME_TAC THENL
-  [ASM_SIMP_TAC[GSYM INT_OF_NUM_SUB; GSYM INT_OF_NUM_ADD] THEN
-   INT_ARITH_TAC; ALL_TAC] THEN
-  ASM_REWRITE_TAC[INT_OF_NUM_DIV; NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
-  MP_TAC(SPECL [`r:num`; `190464`] (CONJUNCT1 DIVISION_SIMP)) THEN
-  DISCH_TAC THEN
-  SUBGOAL_THEN `r - r MOD 190464 + 190464 = (r DIV 190464 + 1) * 190464`
-    ASSUME_TAC THENL
-  [ASM_ARITH_TAC; ALL_TAC] THEN
-  ASM_REWRITE_TAC[] THEN
-  MP_TAC(SPECL [`(r DIV 190464 + 1) * 190464`; `190464`] DIV_MULT) THEN
-  ARITH_TAC);;
-
-(* Unfold mldsa_use_hint_88 eliminating the paired let *)
-let MLDSA_USE_HINT_88_UNFOLD = prove(
-  `!h r. mldsa_use_hint_88 h r =
-   (if h = 1 /\ decompose_88_r0 r > &0
-    then if decompose_88_r1 r = 43 then 0 else decompose_88_r1 r + 1
-    else if h = 1 /\ decompose_88_r0 r <= &0
-    then if decompose_88_r1 r = 0 then 43 else decompose_88_r1 r - 1
-    else decompose_88_r1 r)`,
-  REPEAT GEN_TAC THEN
-  REWRITE_TAC[mldsa_use_hint_88; decompose_88_r1; decompose_88_r0] THEN
-  SPEC_TAC(`mldsa_decompose_88 r`, `p:num#int`) THEN
-  REWRITE_TAC[FORALL_PAIR_THM] THEN
-  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[]);;
+    (CONV_RULE(ONCE_DEPTH_CONV NUM_REDUCE_CONV)
+      (REWRITE_RULE[fst MLDSA_USE_HINT_88_EXEC]
+         MLDSA_USE_HINT_88_CORRECT_BOUND_CODE)));;
 
 
 (* ========================================================================= *)
@@ -993,10 +925,10 @@ let DECOMPOSE_88_R0_SIGN = time prove(
 
 let MLDSA_USE_HINT_88_EQUIV = prove(
   `!r h. r < 8380417 /\ h <= 1
-         ==> mldsa_use_hint_88 h r = mldsa_use_hint_88_spec r h`,
+         ==> mldsa_use_hint_88 h r = mldsa_use_hint_88_code r h`,
   REPEAT GEN_TAC THEN STRIP_TAC THEN
   REWRITE_TAC[MLDSA_USE_HINT_88_UNFOLD] THEN
-  REWRITE_TAC[mldsa_use_hint_88_spec] THEN
+  REWRITE_TAC[mldsa_use_hint_88_code] THEN
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   MP_TAC(SPEC `r:num` DECOMPOSE_88_R1_EQUIV) THEN ASM_REWRITE_TAC[] THEN
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
@@ -1010,22 +942,16 @@ let MLDSA_USE_HINT_88_EQUIV = prove(
   ASM_CASES_TAC `decompose_88_r0 r > &0` THEN ASM_REWRITE_TAC[] THEN
   COND_CASES_TAC THEN ASM_REWRITE_TAC[]);;
 
-let ENSURES_STRENGTHEN_POST = prove(
-  `!P (Q:armstate->bool) Q' R.
-     ensures arm P Q' R /\ (!s. Q' s ==> Q s) ==> ensures arm P Q R`,
-  REPEAT GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 MP_TAC ASSUME_TAC) THEN
-  REWRITE_TAC[ensures] THEN MATCH_MP_TAC MONO_FORALL THEN
-  X_GEN_TAC `s0:armstate` THEN MATCH_MP_TAC MONO_IMP THEN REWRITE_TAC[] THEN
-  MP_TAC(BETA_RULE(ISPECL [`arm`;
-    `\s':armstate. (Q':armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`;
-    `\s':armstate. (Q:armstate->bool) s' /\ (R:armstate->armstate->bool) (s0:armstate) s'`]
-    EVENTUALLY_MONO)) THEN
-  ANTS_TAC THENL [ASM_MESON_TAC[]; MESON_TAC[]]);;
+(* ========================================================================= *)
+(* Public subroutine correctness (FIPS 204-aligned)                          *)
+(* ========================================================================= *)
 
-(* FIPS 204-aligned subroutine correctness.
-   Derived from the code-aligned SUBROUTINE_CORRECT by rewriting
-   mldsa_use_hint_88_spec -> mldsa_use_hint_88 via MLDSA_USE_HINT_88_EQUIV. *)
-let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_FIPS204 = prove
+(* Postcondition is stated in terms of mldsa_use_hint_88 from FIPS 204
+   (Algorithm 40), with the output bound < 44 as a corollary.
+   Derived from MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_CODE by
+   rewriting mldsa_use_hint_88_code -> mldsa_use_hint_88 via
+   MLDSA_USE_HINT_88_EQUIV. *)
+let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT = prove
  (`!b a h x y pc returnaddress.
     nonoverlapping (word pc, LENGTH mldsa_poly_use_hint_88_mc) (b, 1024) /\
     nonoverlapping (b, 1024) (a, 1024) /\
@@ -1046,7 +972,9 @@ let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_FIPS204 = prove
           (\s. read PC s = returnaddress /\
                (!i. i < 256 ==>
                  read(memory :> bytes32(word_add b (word(4 * i)))) s =
-                   word(mldsa_use_hint_88 (val(y i)) (val(x i)))))
+                   word(mldsa_use_hint_88 (val(y i)) (val(x i)))) /\
+               (!i. i < 256 ==>
+                 val(read(memory :> bytes32(word_add b (word(4 * i)))) s) < 44))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
            MAYCHANGE [memory :> bytes(b, 1024)])`,
   REPEAT GEN_TAC THEN
@@ -1054,21 +982,49 @@ let MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_FIPS204 = prove
   SUBGOAL_THEN
     `!i. i < 256 ==>
          mldsa_use_hint_88 (val((y:num->int32) i)) (val((x:num->int32) i)) =
-         mldsa_use_hint_88_spec (val(x i)) (val(y i))`
+         mldsa_use_hint_88_code (val(x i)) (val(y i))`
     (fun th -> SIMP_TAC[th]) THENL
   [REPEAT STRIP_TAC THEN MATCH_MP_TAC MLDSA_USE_HINT_88_EQUIV THEN
    CONJ_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
-   MATCH_MP_TAC ENSURES_STRENGTHEN_POST THEN
-   EXISTS_TAC
-    `\s. read PC s = returnaddress /\
-         (!i. i < 256 ==>
-           read(memory :> bytes32(word_add b (word(4 * i)))) s =
-             word(mldsa_use_hint_88_spec (val(x i:int32)) (val(y i:int32)))) /\
-         (!i. i < 256 ==>
-           val(read(memory :> bytes32(word_add b (word(4 * i)))) s) < 44)` THEN
-   CONJ_TAC THENL
-   [MATCH_MP_TAC MLDSA_USE_HINT_88_SUBROUTINE_CORRECT THEN
-    ASM_REWRITE_TAC[];
-    GEN_TAC THEN CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
-    DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
-    ASM_REWRITE_TAC[]]]);;
+   MATCH_MP_TAC MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_CODE THEN
+   ASM_REWRITE_TAC[]]);;
+
+
+(* ========================================================================= *)
+(* Constant-time and memory safety proof.                                    *)
+(* ========================================================================= *)
+
+needs "arm/proofs/consttime.ml";;
+needs "arm/proofs/subroutine_signatures.ml";;
+
+
+let full_spec,public_vars = mk_safety_spec
+    ~keep_maychanges:false
+    (assoc "mldsa_poly_use_hint_88" subroutine_signatures)
+    MLDSA_USE_HINT_88_SUBROUTINE_CORRECT_CODE
+    MLDSA_USE_HINT_88_EXEC;;
+
+let MLDSA_USE_HINT_88_SUBROUTINE_SAFE = time prove
+ (`exists f_events.
+       forall e b a h pc returnaddress.
+           nonoverlapping (word pc,LENGTH mldsa_poly_use_hint_88_mc) (b,1024) /\
+           nonoverlapping (b,1024) (a,1024) /\
+           nonoverlapping (b,1024) (h,1024)
+           ==> ensures arm
+               (\s.
+                    aligned_bytes_loaded s (word pc)
+                    mldsa_poly_use_hint_88_mc /\
+                    read PC s = word pc /\
+                    read X30 s = returnaddress /\
+                    C_ARGUMENTS [b; a; h] s /\
+                    read events s = e)
+               (\s.
+                    read PC s = returnaddress /\
+                    (exists e2.
+                         read events s = APPEND e2 e /\
+                         e2 = f_events a h b pc returnaddress /\
+                         memaccess_inbounds e2 [a,1024; h,1024; b,1024]
+                         [b,1024]))
+               (\s s'. true)`,
+  ASSERT_CONCL_TAC full_spec THEN
+  PROVE_SAFETY_SPEC_TAC ~public_vars:public_vars MLDSA_USE_HINT_88_EXEC);;
