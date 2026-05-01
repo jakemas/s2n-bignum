@@ -803,8 +803,6 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          val(read X13 s:int64) <= 8 /\
          val(read X12 s:int64) + val(read X13 s:int64) =
          LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(8 * i,8) inlist):int16 list) /\
-         read (memory :> bytes128 (word_add stackpointer (word(2 * curlen)))) s =
-         read Q16 s /\
          curlen < 256 /\
          nonoverlapping (stackpointer,576) (word pc,344)` THEN
    CONJ_TAC THENL
