@@ -2017,3 +2017,85 @@ let INT_MOD_RESIDUE = prove(
   REWRITE_TAC[GSYM INT_OF_NUM_MUL; GSYM INT_OF_NUM_ADD;
               GSYM INT_OF_NUM_EQ] THEN
   INT_ARITH_TAC);;
+
+(* ========================================================================= *)
+(* FIPS 204 UseHint definitions (Algorithms 36 and 40)                       *)
+(* ========================================================================= *)
+
+let mldsa_cmod = new_definition
+  `mldsa_cmod (r:num) (m:num) : int =
+   if (r MOD m) * 2 <= m then &(r MOD m) else &(r MOD m) - &m`;;
+
+let mldsa_decompose_32 = new_definition
+  `mldsa_decompose_32 (r:num) : num # int =
+   let r0 = mldsa_cmod r 523776 in
+   if &r - r0 = &8380416 then (0, r0 - &1)
+   else (num_of_int((&r - r0) div &523776), r0)`;;
+
+let decompose_32_r1 = new_definition
+  `decompose_32_r1 (r:num) : num = FST(mldsa_decompose_32 r)`;;
+
+let decompose_32_r0 = new_definition
+  `decompose_32_r0 (r:num) : int = SND(mldsa_decompose_32 r)`;;
+
+let mldsa_use_hint_32 = new_definition
+  `mldsa_use_hint_32 (h:num) (r:num) : num =
+   let (r1, r0) = mldsa_decompose_32 r in
+   if h = 1 /\ r0 > &0 then (r1 + 1) MOD 16
+   else if h = 1 /\ r0 <= &0 then (r1 + 15) MOD 16
+   else r1`;;
+
+let LOWER_NONWRAP_R1 = prove(
+  `!r. r MOD 523776 * 2 <= 523776 /\
+       ~((&r:int) - &(r MOD 523776) = &8380416) ==>
+   decompose_32_r1 r = r DIV 523776`,
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[decompose_32_r1; mldsa_decompose_32; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `r MOD 523776 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  ASM_SIMP_TAC[INT_OF_NUM_SUB; INT_OF_NUM_DIV;
+               NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
+  MP_TAC(SPECL [`r:num`; `523776`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  DISCH_TAC THEN
+  SUBGOAL_THEN `r - r MOD 523776 = 523776 * r DIV 523776` SUBST1_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL [`523776`; `r DIV 523776`] DIV_MULT) THEN
+  CONV_TAC NUM_REDUCE_CONV);;
+
+let UPPER_NONWRAP_R1 = prove(
+  `!r. ~(r MOD 523776 * 2 <= 523776) /\
+       ~((&r:int) - (&(r MOD 523776) - &523776) = &8380416) ==>
+   decompose_32_r1 r = r DIV 523776 + 1`,
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[decompose_32_r1; mldsa_decompose_32; mldsa_cmod] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `r MOD 523776 <= r` ASSUME_TAC THENL
+  [MESON_TAC[MOD_LE]; ALL_TAC] THEN
+  SUBGOAL_THEN `r MOD 523776 < 523776` ASSUME_TAC THENL
+  [MP_TAC(SPECL [`r:num`; `523776`] MOD_LT_EQ) THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(&r:int) - (&(r MOD 523776) - &523776) =
+                &(r - r MOD 523776 + 523776)` ASSUME_TAC THENL
+  [ASM_SIMP_TAC[GSYM INT_OF_NUM_SUB; GSYM INT_OF_NUM_ADD] THEN
+   INT_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[INT_OF_NUM_DIV; NUM_OF_INT_OF_NUM; INT_OF_NUM_EQ] THEN
+  MP_TAC(SPECL [`r:num`; `523776`] (CONJUNCT1 DIVISION_SIMP)) THEN
+  DISCH_TAC THEN
+  SUBGOAL_THEN `r - r MOD 523776 + 523776 = (r DIV 523776 + 1) * 523776`
+    ASSUME_TAC THENL
+  [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  MP_TAC(SPECL [`(r DIV 523776 + 1) * 523776`; `523776`] DIV_MULT) THEN
+  ARITH_TAC);;
+
+let MLDSA_USE_HINT_32_UNFOLD = prove(
+  `!h r. mldsa_use_hint_32 h r =
+   (if h = 1 /\ decompose_32_r0 r > &0 then (decompose_32_r1 r + 1) MOD 16
+    else if h = 1 /\ decompose_32_r0 r <= &0
+    then (decompose_32_r1 r + 15) MOD 16
+    else decompose_32_r1 r)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[mldsa_use_hint_32; decompose_32_r1; decompose_32_r0] THEN
+  SPEC_TAC(`mldsa_decompose_32 r`, `p:num#int`) THEN
+  REWRITE_TAC[FORALL_PAIR_THM] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[]);;
