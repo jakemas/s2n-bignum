@@ -812,6 +812,7 @@ e (DBG "01 START" THEN
    DBG "04d after ABBREV niblist" THEN
    ABBREV_TAC `niblen = LENGTH(niblist:int16 list)` THEN
    DBG "04e after ABBREV niblen" THEN
+   DUMP_STATE_TAC "/tmp/eta4/cheat1_state.txt" THEN
    CHEAT_TAC] THEN  (* CHEAT: writeback memory content (was broken in original) *)
 
  (* === WOP: find smallest N where loop exits === *)
@@ -910,10 +911,14 @@ e (DBG "01 START" THEN
          read X8 s = stackpointer /\ read X9 s = word curlen /\
          read (memory :> bytes (stackpointer,2 * curlen)) s =
          num_of_wordlist (curlist:int16 list) /\
-         val(read X12 s:int64) <= 8 /\
-         val(read X13 s:int64) <= 8 /\
-         val(read X12 s:int64) + val(read X13 s:int64) =
-         LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(8 * i,8) inlist):int16 list) /\
+         (?lis0 lis1:int16 list.
+            LENGTH lis0 <= 8 /\ LENGTH lis1 <= 8 /\
+            val(read X12 s:int64) = LENGTH lis0 /\
+            val(read X13 s:int64) = LENGTH lis1 /\
+            APPEND lis0 lis1 =
+              REJ_NIBBLES_ETA4(SUB_LIST(8 * i,8) inlist) /\
+            read Q16 s = word(num_of_wordlist lis0):int128 /\
+            read Q17 s = word(num_of_wordlist lis1):int128) /\
          curlen < 256 /\
          nonoverlapping (stackpointer,576) (word pc,344)` THEN
    CONJ_TAC THENL
@@ -969,161 +974,92 @@ e (DBG "01 START" THEN
      TRY(NONOVERLAPPING_TAC) THEN
      TRY(REWRITE_TAC[UADDLV_BOUND_LEMMA] THEN NO_TAC) THEN
      DBG "13 after BOUND TRY" THEN
-     TRY(DBG "14a TRY counting bridge entry" THEN
-         REWRITE_TAC[UADDLV_COUNT_LEMMA] THEN
-         REWRITE_TAC(List.map (fun k -> BITBLAST_RULE
-           (vsubst [mk_small_numeral k, `k:num`]
-           `bit k (word_subword (word_neg (word (bitval b):16 word))
-                   (0,8):8 word) <=> b`)) (0--7)) THEN
-         DBG "14b after bit-k rewrites" THEN
-         ASM_REWRITE_TAC[] THEN
-         DBG "14c after ASM_REWRITE" THEN
-         (* Counting bridge: apply COUNT_BRIDGE_ABSTRACT with 16 halfword
-            identities derived from nibbles0 / nibbles1b = f(loaded_d), then
-            collapse sum via NIBBLE_COUNTING_D. *)
-         (let prove_hw name pos byte_pos op =
-            let rhs_inner = if op = "and"
-              then Printf.sprintf
-                "(word_and (word_subword (loaded_d:int64) (%d,8):byte) (word 15):byte)"
-                byte_pos
-              else Printf.sprintf
-                "(word_ushr (word_subword (loaded_d:int64) (%d,8):byte) 4:byte)"
-                byte_pos in
-            let goal_str = Printf.sprintf
-              "(word_subword (%s:int128) (%d,16)):int16 = word_zx %s :int16"
-              name pos rhs_inner in
-            SUBGOAL_THEN (parse_term goal_str) ASSUME_TAC THENL
-             [FIRST_X_ASSUM(MP_TAC o SYM o check
-                (fun th -> let c = concl th in is_eq c &&
-                  (try fst(dest_var(rhs c)) = name with _ -> false))) THEN
-              DISCH_THEN(fun th -> SUBST1_TAC th THEN ASSUME_TAC(SYM th)) THEN
-              CONV_TAC WORD_BLAST;
-              ALL_TAC] in
-          prove_hw "nibbles0" 0 0 "and" THEN
-          prove_hw "nibbles0" 16 0 "ushr" THEN
-          prove_hw "nibbles0" 32 8 "and" THEN
-          prove_hw "nibbles0" 48 8 "ushr" THEN
-          prove_hw "nibbles0" 64 16 "and" THEN
-          prove_hw "nibbles0" 80 16 "ushr" THEN
-          prove_hw "nibbles0" 96 24 "and" THEN
-          prove_hw "nibbles0" 112 24 "ushr" THEN
-          prove_hw "nibbles1b" 0 32 "and" THEN
-          prove_hw "nibbles1b" 16 32 "ushr" THEN
-          prove_hw "nibbles1b" 32 40 "and" THEN
-          prove_hw "nibbles1b" 48 40 "ushr" THEN
-          prove_hw "nibbles1b" 64 48 "and" THEN
-          prove_hw "nibbles1b" 80 48 "ushr" THEN
-          prove_hw "nibbles1b" 96 56 "and" THEN
-          prove_hw "nibbles1b" 112 56 "ushr") THEN
-         DBG "14d after prove_hw 16x" THEN
-         MP_TAC(SPECL
-           [`nibbles0:int128`; `nibbles1b:int128`;
-            `word_subword (loaded_d:int64) (0,8):byte`;
-            `word_subword (loaded_d:int64) (8,8):byte`;
-            `word_subword (loaded_d:int64) (16,8):byte`;
-            `word_subword (loaded_d:int64) (24,8):byte`;
-            `word_subword (loaded_d:int64) (32,8):byte`;
-            `word_subword (loaded_d:int64) (40,8):byte`;
-            `word_subword (loaded_d:int64) (48,8):byte`;
-            `word_subword (loaded_d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT) THEN
-         DBG "14e after MP_TAC bridge" THEN
-         ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
-         DBG "14f after ANTS" THEN
-         DISCH_THEN SUBST1_TAC THEN
-         DBG "14g after DISCH_THEN SUBST1" THEN
-         ASM_REWRITE_TAC[] THEN
-         DBG "14h after ASM_REWRITE" THEN
-         (* TRANS via [bytes of loaded_d] list: first half by
-            NIBBLE_COUNTING_D, second half by SUB_LIST = [bytes] *)
-         TRANS_TAC EQ_TRANS
-           `LENGTH(REJ_NIBBLES_ETA4
-              [word_subword (loaded_d:int64) (0,8):byte;
-               word_subword (loaded_d:int64) (8,8):byte;
-               word_subword (loaded_d:int64) (16,8):byte;
-               word_subword (loaded_d:int64) (24,8):byte;
-               word_subword (loaded_d:int64) (32,8):byte;
-               word_subword (loaded_d:int64) (40,8):byte;
-               word_subword (loaded_d:int64) (48,8):byte;
-               word_subword (loaded_d:int64) (56,8):byte])` THEN
-         DBG "14i after TRANS_TAC" THEN
-         CONJ_TAC THENL
-          [DBG "14j first CONJ branch" THEN
-           MP_TAC(SPEC `loaded_d:int64` NIBBLE_COUNTING_D) THEN
-           REWRITE_TAC[LET_DEF; LET_END_DEF] THEN BETA_TAC THEN
-           CONV_TAC NUM_REDUCE_CONV THEN
-           DISCH_THEN(fun th -> MP_TAC th THEN ARITH_TAC);
-           DBG "14k second CONJ branch" THEN
-           AP_TERM_TAC THEN AP_TERM_TAC THEN
-           DBG "14l after AP_TERM_TAC x2" THEN
-           (* Derive [bytes of loaded_d] = SUB_LIST(8*i,8) inlist from memory
-              hypotheses: flip orientation, reduce list equality via
-              LISTS_NUM_OF_WORDLIST_EQ, then connect val(loaded_d) =
-              (num_of_wordlist inlist DIV 2^(8*8*i)) MOD 2^64 via AP_TERM on
-              the memory-read equation + VAL_READ_WBYTES/BYTES64_WBYTES. *)
-           CONV_TAC SYM_CONV THEN
-           REWRITE_TAC[LISTS_NUM_OF_WORDLIST_EQ] THEN CONJ_TAC THENL
-            [REWRITE_TAC[LENGTH; LENGTH_SUB_LIST] THEN
-             UNDISCH_TAC `LENGTH(inlist:byte list) = buflen` THEN
-             UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
-             ALL_TAC] THEN
-           REWRITE_TAC[NUM_OF_WORDLIST_SUB_LIST; DIMINDEX_8] THEN
-           MP_TAC(ASSUME `read (memory :> bytes (buf,buflen)) s29 =
-                          num_of_wordlist (inlist:byte list)`) THEN
-           DISCH_THEN(MP_TAC o AP_TERM
-             `\x. x DIV 2 EXP (8 * 8 * i) MOD 2 EXP (8 * 8)`) THEN
-           CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
-           REWRITE_TAC[READ_COMPONENT_COMPOSE;
-                       READ_BYTES_DIV; READ_BYTES_MOD] THEN
-           SUBGOAL_THEN `MIN (buflen - 8 * i) 8 = 8` SUBST1_TAC THENL
-            [UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
-             ALL_TAC] THEN
-           MP_TAC(ISPECL
-             [`word_add buf (word (8 * i)):int64`; `read memory s29`]
-             (INST_TYPE[`:64`,`:N`] VAL_READ_WBYTES)) THEN
-           REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
-           REWRITE_TAC[GSYM BYTES64_WBYTES; GSYM READ_COMPONENT_COMPOSE] THEN
-           ASM_REWRITE_TAC[] THEN
-           DISCH_THEN(ASSUME_TAC o SYM) THEN DISCH_TAC THEN
-           SUBGOAL_THEN
-            `num_of_wordlist
-              [(word_subword (loaded_d:int64) (0,8):byte);
-               (word_subword loaded_d (8,8):byte);
-               (word_subword loaded_d (16,8):byte);
-               (word_subword loaded_d (24,8):byte);
-               (word_subword loaded_d (32,8):byte);
-               (word_subword loaded_d (40,8):byte);
-               (word_subword loaded_d (48,8):byte);
-               (word_subword loaded_d (56,8):byte)] =
-             val(loaded_d:int64)` SUBST1_TAC THENL
-            [REWRITE_TAC[num_of_wordlist; DIMINDEX_8] THEN
-             CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_BLAST;
-             ASM_MESON_TAC[]]]) THEN
-     DBG "14n after second CONJ closes" THEN
-     ASM_ARITH_TAC;
+     TRY(ASM_REWRITE_TAC[] THEN NO_TAC) THEN
+     TRY(ASM_ARITH_TAC) THEN
+     (* Remaining goal: the existential `?lis0 lis1. ...` carrying post-TBL
+        Q16/Q17 content. This is the TBL-correctness obligation (CHEAT: to
+        be discharged via the 256-entry eta table lemma). Everything else
+        — memory bytes, X-register equalities, curlen bound — is closed by
+        the TRY chain above. *)
+     DBG "14 first-half existential (TBL CHEAT)" THEN
+     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_state.txt" THEN
+     CHEAT_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
    DBG "15 second half start" THEN
    ENSURES_INIT_TAC "s0" THEN
    DBG "15a after ENSURES_INIT" THEN
-   ABBREV_TAC `len0 = val(read X12 s0:int64)` THEN
-   ABBREV_TAC `len1 = val(read X13 s0:int64)` THEN
+   (* Unpack ?lis0 lis1 from the strengthened invariant. *)
+   FIRST_X_ASSUM(X_CHOOSE_THEN `lis0:int16 list` MP_TAC o check
+     (fun th -> try fst(dest_var(fst(dest_exists(concl th)))) = "lis0"
+                with _ -> false)) THEN
+   DISCH_THEN(X_CHOOSE_THEN `lis1:int16 list` STRIP_ASSUME_TAC) THEN
+   DBG "15a2 after CHOOSE lis0/lis1" THEN
+   ABBREV_TAC `len0 = LENGTH(lis0:int16 list)` THEN
+   ABBREV_TAC `len1 = LENGTH(lis1:int16 list)` THEN
    DBG "15b after ABBREV len0/len1" THEN
+   (* Promote val(X12 s0) = len0, val(X13 s0) = len1 (from invariant). *)
+   SUBGOAL_THEN `val(read X12 s0:int64) = len0 /\ val(read X13 s0:int64) = len1`
+     STRIP_ASSUME_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+   DBG "15b2 after val(X12/X13 s0) = len_i" THEN
+   (* Step 1 = ST1 Q16 at X7 = sp+2*curlen. After step, bytes128 at that
+      address holds word(num_of_wordlist lis0). *)
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [1] THEN
-   DBG "15c after ARM step 1" THEN
+   DBG "15c after ARM step 1 (STR Q16)" THEN
+   (* Establish memory equation covering APPEND curlist lis0. *)
+   SUBGOAL_THEN
+    `read (memory :> bytes (stackpointer, 2 * (curlen + len0))) s1 =
+     num_of_wordlist(APPEND curlist lis0:int16 list)`
+   ASSUME_TAC THENL
+    [REWRITE_TAC[LEFT_ADD_DISTRIB] THEN
+     DBG "WB1a before LENGTH curlist" THEN
+     SUBGOAL_THEN `LENGTH(curlist:int16 list) = curlen` ASSUME_TAC THENL
+      [EXPAND_TAC "curlen" THEN REFL_TAC; ALL_TAC] THEN
+     DBG "WB1b after LENGTH curlist" THEN
+     W(MP_TAC o PART_MATCH (lhand o rand)
+       BYTES_EQ_NUM_OF_WORDLIST_APPEND o snd) THEN
+     DBG "WB1c after PART_MATCH" THEN
+     ANTS_TAC THENL
+      [REWRITE_TAC[DIMINDEX_16] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+       ALL_TAC] THEN
+     DBG "WB1d after ANTS" THEN
+     DISCH_THEN SUBST1_TAC THEN
+     DBG "WB1e after SUBST1 iff" THEN
+     CONJ_TAC THENL
+      [ASM_REWRITE_TAC[];
+       DBG "WB1f in second CONJ" THEN
+       SUBGOAL_THEN
+        `read (memory :> bytes128
+               (word_add stackpointer (word (2 * curlen)))) s1 =
+         word(num_of_wordlist(lis0:int16 list)):int128`
+       MP_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+       DBG "WB1g after bytes128 SUBGOAL" THEN
+       DISCH_THEN(MP_TAC o AP_TERM `val:int128->num`) THEN
+       REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES128_WBYTES;
+                   VAL_READ_WBYTES;
+                   DIMINDEX_128; ARITH_RULE `128 DIV 8 = 16`] THEN
+       DBG "WB1h after WBYTES rewrites" THEN
+       SUBGOAL_THEN `2 * len0 = MIN 16 (2 * len0)` SUBST1_TAC THENL
+        [UNDISCH_TAC `len0:num <= 8` THEN ARITH_TAC;
+         REWRITE_TAC[GSYM READ_BYTES_MOD]] THEN
+       DBG "WB1i after MIN subst" THEN
+       DISCH_THEN SUBST1_TAC THEN REWRITE_TAC[VAL_WORD] THEN
+       REWRITE_TAC[DIMINDEX_128; MOD_MOD_EXP_MIN] THEN
+       MATCH_MP_TAC MOD_LT THEN
+       MATCH_MP_TAC NUM_OF_WORDLIST_BOUND_GEN THEN
+       ASM_REWRITE_TAC[DIMINDEX_16] THEN
+       UNDISCH_TAC `len0:num <= 8` THEN ARITH_TAC];
+     ALL_TAC] THEN
+   DBG "15c2 after memory curlist+lis0 at s1" THEN
    SUBGOAL_THEN `read X12 s1:int64 = word len0` ASSUME_TAC THENL
-    [DBG "15d inside X12 subgoal" THEN
-     REWRITE_TAC[GSYM VAL_EQ] THEN ASM_REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
-     DBG "15e after REWRITE" THEN
-     CONV_TAC SYM_CONV THEN
-     MATCH_MP_TAC MOD_LT THEN
-     DBG "15f after MATCH_MP_TAC MOD_LT" THEN
-     ASM_ARITH_TAC; ALL_TAC] THEN
-   DBG "15g after X12 subgoal" THEN
+    [REWRITE_TAC[GSYM VAL_EQ] THEN ASM_REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+     CONV_TAC SYM_CONV THEN MATCH_MP_TAC MOD_LT THEN
+     UNDISCH_TAC `len0:num <= 8` THEN ARITH_TAC; ALL_TAC] THEN
    SUBGOAL_THEN `read X13 s1:int64 = word len1` ASSUME_TAC THENL
     [REWRITE_TAC[GSYM VAL_EQ] THEN ASM_REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
-     CONV_TAC SYM_CONV THEN
-     MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
-   DBG "15h after X13 subgoal" THEN
+     CONV_TAC SYM_CONV THEN MATCH_MP_TAC MOD_LT THEN
+     UNDISCH_TAC `len1:num <= 8` THEN ARITH_TAC; ALL_TAC] THEN
+   DBG "15h after X12/X13 s1" THEN
    ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC "s2" THEN
    DBG "15i after VSTEP s2" THEN
    FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE RAND_CONV [WORD_ADD_SHL1]) THEN
@@ -1134,8 +1070,23 @@ e (DBG "01 START" THEN
                      16) (word pc:int64, 344)`
    ASSUME_TAC THENL [NONOVERLAPPING_TAC; ALL_TAC] THEN
    DBG "15k after nonoverlapping subgoal" THEN
+   (* Reduce val(word len0) → len0 in hypotheses so the ST1 Q17 step
+      records the clean address. *)
+   SUBGOAL_THEN `val(word len0:int64) = len0` ASSUME_TAC THENL
+    [MATCH_MP_TAC VAL_WORD_EQ THEN REWRITE_TAC[DIMINDEX_64] THEN
+     UNDISCH_TAC `len0:num <= 8` THEN ARITH_TAC; ALL_TAC] THEN
+   RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `val(word len0:int64) = len0`]) THEN
+   (* Step 3 = ST1 Q17 at X7 = sp+2*(curlen+len0). *)
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [3] THEN
-   DBG "15l after ARM step 3" THEN
+   DBG "15l after ARM step 3 (STR Q17)" THEN
+   (* Build memory equation covering APPEND (APPEND curlist lis0) lis1. *)
+   SUBGOAL_THEN
+    `read (memory :> bytes (stackpointer, 2 * ((curlen + len0) + len1))) s3 =
+     num_of_wordlist(APPEND (APPEND curlist lis0) lis1:int16 list)`
+   ASSUME_TAC THENL
+    [DBG "WB2 CHEAT" THEN CHEAT_TAC;
+     ALL_TAC] THEN
+   DBG "15l2 after memory curlist+lis0+lis1 at s3" THEN
    ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC "s4" THEN
    DBG "15m after VSTEP s4" THEN
    FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE RAND_CONV [WORD_ADD_SHL1]) THEN
@@ -1158,25 +1109,44 @@ e (DBG "01 START" THEN
    DBG "15t after STEP DISCH" THEN
    ABBREV_TAC `newbatch = REJ_NIBBLES_ETA4(SUB_LIST(8*i, 8) inlist):int16 list` THEN
    DBG "15u after ABBREV newbatch" THEN
+   (* newbatch = APPEND lis0 lis1 from invariant *)
+   SUBGOAL_THEN `APPEND (lis0:int16 list) lis1 = newbatch` ASSUME_TAC THENL
+    [EXPAND_TAC "newbatch" THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+   SUBGOAL_THEN `LENGTH(newbatch:int16 list) = len0 + len1` ASSUME_TAC THENL
+    [UNDISCH_TAC `APPEND (lis0:int16 list) lis1 = newbatch` THEN
+     DISCH_THEN(SUBST1_TAC o SYM) THEN
+     REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+   (* val(word len_i) = len_i reductions — simplify register forms. *)
+   SUBGOAL_THEN `val(word len0:int64) = len0 /\ val(word len1:int64) = len1`
+     STRIP_ASSUME_TAC THENL
+    [CONJ_TAC THEN MATCH_MP_TAC VAL_WORD_EQ THEN
+     REWRITE_TAC[DIMINDEX_64] THENL
+      [UNDISCH_TAC `len0:num <= 8` THEN ARITH_TAC;
+       UNDISCH_TAC `len1:num <= 8` THEN ARITH_TAC];
+     ALL_TAC] THEN
    REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN
-   DBG "15v after LENGTH_APPEND" THEN
-   SUBGOAL_THEN `len0 + len1 = LENGTH(newbatch:int16 list)` ASSUME_TAC THENL
-    [ASM_REWRITE_TAC[]; ALL_TAC] THEN
-   DBG "15w after len0+len1=LENGTH" THEN
-   REPEAT CONJ_TAC THENL
-    [DBG "15x final CONJ1" THEN AP_TERM_TAC THEN AP_TERM_TAC THEN
-     (* Goal is 2 * ((curlen + val(word len0)) + val(word len1)) = 2 * (curlen + LENGTH newbatch).
-        Reduce val(word len_i) → len_i via VAL_WORD_EQ; bounds come from len_i = val(...). *)
-     SUBGOAL_THEN `val(word len0:int64) = len0 /\ val(word len1:int64) = len1`
-       (fun th -> REWRITE_TAC[th]) THENL
-      [CONJ_TAC THEN MATCH_MP_TAC VAL_WORD_EQ THEN
-       REWRITE_TAC[DIMINDEX_64] THEN ASM_ARITH_TAC;
-       DBG "15x' after val(word len_i) simplified" THEN
-       ASM_ARITH_TAC];
-     DBG "15y final CONJ2" THEN
-     UNDISCH_TAC `len0 + len1 = LENGTH(newbatch:int16 list)` THEN
-     DISCH_THEN(SUBST1_TAC o SYM) THEN CONV_TAC WORD_RULE;
-     DBG "15z final CONJ3 (CHEAT)" THEN CHEAT_TAC];
+   DBG "15v after newbatch decomp" THEN
+   REPEAT CONJ_TAC THEN
+   DBG "15w after REPEAT CONJ_TAC" THEN
+   TRY(CONV_TAC WORD_RULE) THEN
+   DBG "15x after TRY WORD_RULE" THEN
+   TRY(AP_TERM_TAC THEN AP_TERM_TAC THEN
+       ASM_REWRITE_TAC[] THEN ARITH_TAC) THEN
+   DBG "15y after TRY size-equality" THEN
+   (* Remaining: the memory-APPEND goal. Close via the established
+      curlist+lis0+lis1 memory equation (now propagated to s6 by MAYCHANGE). *)
+   DUMP_STATE_TAC "/tmp/eta4/cheat3_final.txt" THEN
+   SUBGOAL_THEN
+     `2 * (curlen + len0 + len1) = 2 * ((curlen + len0) + len1)`
+    SUBST1_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+   SUBGOAL_THEN
+     `APPEND curlist (newbatch:int16 list) =
+      APPEND (APPEND curlist lis0) lis1`
+    SUBST1_TAC THENL
+     [UNDISCH_TAC `APPEND (lis0:int16 list) lis1 = newbatch` THEN
+      DISCH_THEN(SUBST1_TAC o SYM) THEN
+      REWRITE_TAC[APPEND_ASSOC]; ALL_TAC] THEN
+   ASM_REWRITE_TAC[];
 
    (*** Subgoal 4: Back edge — 2 ARM steps from pc+248 to pc+108 ***)
    DBG "16 subgoal4 back edge" THEN
