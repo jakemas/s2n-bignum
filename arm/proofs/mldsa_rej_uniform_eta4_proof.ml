@@ -450,6 +450,68 @@ let WORD_SX_SUB4_SMALL = BITBLAST_RULE
    ==> word_sx(word_sub (word 4:int16) x):int32 =
        word_sub (word 4) (word_zx x)`;;
 
+(* Byte-level nibble extraction lemmas (for counting bridge) *)
+let BYTE_AND_15_MOD = BITBLAST_RULE
+  `val(word_and (b:byte) (word 15):byte) = val b MOD 16`;;
+
+let BYTE_USHR4_DIV = WORD_BLAST
+  `val(word_ushr (b:byte) 4:byte) = val b DIV 16`;;
+
+let VAL_WORD_ZX_BYTE16 = WORD_BLAST
+  `val(word_zx (b:byte):int16) = val b`;;
+
+let BYTE_NIBBLE_COUNT_EQ = prove(
+  `!b:byte.
+   bitval(val(word_zx(word_and b (word 15):byte):int16) < 9) +
+   bitval(val(word_zx(word_ushr b 4:byte):int16) < 9) =
+   bitval(val b MOD 16 < 9) + bitval(val b DIV 16 < 9)`,
+  GEN_TAC THEN
+  REWRITE_TAC[VAL_WORD_ZX_BYTE16; BYTE_AND_15_MOD; BYTE_USHR4_DIV]);;
+
+(* Abstract counting bridge: given that nibbles0 and nibbles1b have halfwords       *)
+(* equal to byte-nibble expressions, the 16-halfword bitval sum equals              *)
+(* LENGTH(REJ_NIBBLES_ETA4 [b0;b1;...;b7]).                                         *)
+let COUNT_BRIDGE_ABSTRACT = prove(
+  `!x0:int128. !x1:int128. !b0 b1 b2 b3 b4 b5 b6 b7:byte.
+      word_subword x0 (0,16):int16 = word_zx(word_and b0 (word 15):byte):int16 /\
+      word_subword x0 (16,16):int16 = word_zx(word_ushr b0 4:byte):int16 /\
+      word_subword x0 (32,16):int16 = word_zx(word_and b1 (word 15):byte):int16 /\
+      word_subword x0 (48,16):int16 = word_zx(word_ushr b1 4:byte):int16 /\
+      word_subword x0 (64,16):int16 = word_zx(word_and b2 (word 15):byte):int16 /\
+      word_subword x0 (80,16):int16 = word_zx(word_ushr b2 4:byte):int16 /\
+      word_subword x0 (96,16):int16 = word_zx(word_and b3 (word 15):byte):int16 /\
+      word_subword x0 (112,16):int16 = word_zx(word_ushr b3 4:byte):int16 /\
+      word_subword x1 (0,16):int16 = word_zx(word_and b4 (word 15):byte):int16 /\
+      word_subword x1 (16,16):int16 = word_zx(word_ushr b4 4:byte):int16 /\
+      word_subword x1 (32,16):int16 = word_zx(word_and b5 (word 15):byte):int16 /\
+      word_subword x1 (48,16):int16 = word_zx(word_ushr b5 4:byte):int16 /\
+      word_subword x1 (64,16):int16 = word_zx(word_and b6 (word 15):byte):int16 /\
+      word_subword x1 (80,16):int16 = word_zx(word_ushr b6 4:byte):int16 /\
+      word_subword x1 (96,16):int16 = word_zx(word_and b7 (word 15):byte):int16 /\
+      word_subword x1 (112,16):int16 = word_zx(word_ushr b7 4:byte):int16
+      ==>
+      bitval(val(word_subword x0 (0,16):int16) < 9) +
+      bitval(val(word_subword x0 (16,16):int16) < 9) +
+      bitval(val(word_subword x0 (32,16):int16) < 9) +
+      bitval(val(word_subword x0 (48,16):int16) < 9) +
+      bitval(val(word_subword x0 (64,16):int16) < 9) +
+      bitval(val(word_subword x0 (80,16):int16) < 9) +
+      bitval(val(word_subword x0 (96,16):int16) < 9) +
+      bitval(val(word_subword x0 (112,16):int16) < 9) +
+      bitval(val(word_subword x1 (0,16):int16) < 9) +
+      bitval(val(word_subword x1 (16,16):int16) < 9) +
+      bitval(val(word_subword x1 (32,16):int16) < 9) +
+      bitval(val(word_subword x1 (48,16):int16) < 9) +
+      bitval(val(word_subword x1 (64,16):int16) < 9) +
+      bitval(val(word_subword x1 (80,16):int16) < 9) +
+      bitval(val(word_subword x1 (96,16):int16) < 9) +
+      bitval(val(word_subword x1 (112,16):int16) < 9) =
+      LENGTH(REJ_NIBBLES_ETA4 [b0;b1;b2;b3;b4;b5;b6;b7])`,
+  REPEAT GEN_TAC THEN DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN SUBST1_TAC) THEN
+  REWRITE_TAC[REJ_NIBBLES_COUNT_8] THEN
+  REWRITE_TAC[VAL_WORD_ZX_BYTE16; BYTE_AND_15_MOD; BYTE_USHR4_DIV] THEN
+  ARITH_TAC);;
+
 let ALL_REJ_NIBBLES_ETA4 = prove(
   `!l. ALL (\x. val(x:int16) < 9) (REJ_NIBBLES_ETA4 l)`,
   GEN_TAC THEN REWRITE_TAC[REJ_NIBBLES_ETA4; GSYM ALL_MEM; MEM_FILTER] THEN

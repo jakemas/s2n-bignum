@@ -21,29 +21,25 @@ Goal: `read(memory :> bytes(res, 4*MIN 256 niblen)) s245 = num_of_wordlist(SUB_L
 - Per-iteration WB_BLOCK_LO/HI identities (already in proof file)
 - SSHLL + SUB simplification via BITBLAST
 
-### CHEAT #2 (line 857): Counting bridge
-Goal after simplifications:
+### CHEAT #2 (line 919): Counting bridge
+Goal at CHEAT point (confirmed via interactive replay 2026-05-02):
 ```
 bitval(val(word_subword nibbles0 (0,16)) < 9) + ... + 
 bitval(val(word_subword nibbles1b (112,16)) < 9) = 
 LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(8*i,8) inlist))
 ```
 
-**Approach**:
-- `nibbles0` = USHLL(ZIP1(AND d mask, USHR d 4))
-- `nibbles1b` = USHLL(ZIP2(...))
-- Need comprehensive USHLL/ZIP expansion → byte nibble connection
-- Use BITBLAST_RULE for per-halfword = val(byte_k) MOD/DIV 16 identity
-- Then REJ_NIBBLES_COUNT_8 closes the goal
+**Completed helper lemmas** (in proof file, lines 454-511):
+- `BYTE_AND_15_MOD`: val(word_and b 15) = val b MOD 16
+- `BYTE_USHR4_DIV`: val(word_ushr b 4) = val b DIV 16
+- `VAL_WORD_ZX_BYTE16`: val(word_zx b:int16) = val b
+- `BYTE_NIBBLE_COUNT_EQ`: per-byte bridge
+- **`COUNT_BRIDGE_ABSTRACT`**: given 16 halfword = byte-nibble identities on abstract x0, x1, the 16-bitval sum = LENGTH(REJ_NIBBLES_ETA4 [b0;...;b7])
 
-**Required lemma**:
-```ocaml
-NIBBLE_COUNT_FROM_D : 
-  !d:int64.
-    sum_of_16_bitvals_from_USHLL_ZIP1_ZIP2(d) = 
-    LENGTH(REJ_NIBBLES_ETA4 [byte_0 d; ...; byte_7 d])
-```
-+ memory connection: `read(memory :> bytes64(buf+8i)) s = num_of_wordlist(SUB_LIST(8i,8) inlist)`
+**Remaining work**: Show `nibbles0` (= `read Q16 s11`) and `nibbles1b` (= `read Q17 s11`) have halfwords matching the byte-nibble pattern for bytes in `SUB_LIST(8*i,8) inlist`. This requires:
+1. Unfolding the ABBREV hyps `read Q16/Q17 s11 = nibbles0/nibbles1b` to recover ARM semantic form
+2. USHLL(ZIP1/2(AND d mask, USHR d 4)) halfword k = word_zx of appropriate byte nibble of d
+3. Connect d (= `read D0 s2`, from LDR) to `word(num_of_wordlist(SUB_LIST(8i,8) inlist))` via bytes-loaded
 
 ### CHEAT #3 (line 901): Memory APPEND
 Goal: `read(memory :> bytes(stackpointer, 2*(curlen+len0+len1))) s6 = num_of_wordlist(APPEND curlist newbatch)`
