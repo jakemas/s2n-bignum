@@ -747,6 +747,17 @@ let DBG msg = fun g ->
      if String.length s > 100 then String.sub s 0 100 else s);
   ALL_TAC g;;
 
+let DUMP_STATE_TAC path = fun g ->
+  let (hyps, goal) = g in
+  let oc = open_out path in
+  output_string oc (Printf.sprintf "=== GOAL ===\n%s\n\n=== HYPS (%d) ===\n"
+    (string_of_term goal) (List.length hyps));
+  List.iter (fun (name, th) ->
+    output_string oc (Printf.sprintf "[%s]: %s\n\n" name
+      (string_of_term (concl th)))) hyps;
+  close_out oc;
+  ALL_TAC g;;
+
 (* Takes ~60 seconds total *)
 (* Key technique: ENSURES_SEQUENCE_TAC within loop body at pc+0xD8 *)
 (* to capture X12/X13 bounds before ST1 stores.                   *)
@@ -1044,11 +1055,49 @@ e (DBG "01 START" THEN
            DBG "14k second CONJ branch" THEN
            AP_TERM_TAC THEN AP_TERM_TAC THEN
            DBG "14l after AP_TERM_TAC x2" THEN
-           (* SUB_LIST(8*i, 8) inlist = [bytes of loaded_d] follows from
-              memory read: loaded_d = read bytes64(buf+8*i) s3 and
-              read bytes(buf,buflen) = num_of_wordlist inlist. *)
-           DBG "14m before CHEAT_TAC" THEN
-           CHEAT_TAC]) THEN
+           (* Derive [bytes of loaded_d] = SUB_LIST(8*i,8) inlist from memory
+              hypotheses: flip orientation, reduce list equality via
+              LISTS_NUM_OF_WORDLIST_EQ, then connect val(loaded_d) =
+              (num_of_wordlist inlist DIV 2^(8*8*i)) MOD 2^64 via AP_TERM on
+              the memory-read equation + VAL_READ_WBYTES/BYTES64_WBYTES. *)
+           CONV_TAC SYM_CONV THEN
+           REWRITE_TAC[LISTS_NUM_OF_WORDLIST_EQ] THEN CONJ_TAC THENL
+            [REWRITE_TAC[LENGTH; LENGTH_SUB_LIST] THEN
+             UNDISCH_TAC `LENGTH(inlist:byte list) = buflen` THEN
+             UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
+             ALL_TAC] THEN
+           REWRITE_TAC[NUM_OF_WORDLIST_SUB_LIST; DIMINDEX_8] THEN
+           MP_TAC(ASSUME `read (memory :> bytes (buf,buflen)) s29 =
+                          num_of_wordlist (inlist:byte list)`) THEN
+           DISCH_THEN(MP_TAC o AP_TERM
+             `\x. x DIV 2 EXP (8 * 8 * i) MOD 2 EXP (8 * 8)`) THEN
+           CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+           REWRITE_TAC[READ_COMPONENT_COMPOSE;
+                       READ_BYTES_DIV; READ_BYTES_MOD] THEN
+           SUBGOAL_THEN `MIN (buflen - 8 * i) 8 = 8` SUBST1_TAC THENL
+            [UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
+             ALL_TAC] THEN
+           MP_TAC(ISPECL
+             [`word_add buf (word (8 * i)):int64`; `read memory s29`]
+             (INST_TYPE[`:64`,`:N`] VAL_READ_WBYTES)) THEN
+           REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
+           REWRITE_TAC[GSYM BYTES64_WBYTES; GSYM READ_COMPONENT_COMPOSE] THEN
+           ASM_REWRITE_TAC[] THEN
+           DISCH_THEN(ASSUME_TAC o SYM) THEN DISCH_TAC THEN
+           SUBGOAL_THEN
+            `num_of_wordlist
+              [(word_subword (loaded_d:int64) (0,8):byte);
+               (word_subword loaded_d (8,8):byte);
+               (word_subword loaded_d (16,8):byte);
+               (word_subword loaded_d (24,8):byte);
+               (word_subword loaded_d (32,8):byte);
+               (word_subword loaded_d (40,8):byte);
+               (word_subword loaded_d (48,8):byte);
+               (word_subword loaded_d (56,8):byte)] =
+             val(loaded_d:int64)` SUBST1_TAC THENL
+            [REWRITE_TAC[num_of_wordlist; DIMINDEX_8] THEN
+             CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_BLAST;
+             ASM_MESON_TAC[]]]) THEN
      DBG "14n after second CONJ closes" THEN
      ASM_ARITH_TAC;
      ALL_TAC] THEN
