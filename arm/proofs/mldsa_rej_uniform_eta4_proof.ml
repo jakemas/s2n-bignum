@@ -995,9 +995,44 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
    ASM_CASES_TAC `256 <= niblen` THENL
     [(* Case: 256 <= niblen — enough samples *)
      ASM_CASES_TAC `8 <= val(word_sub (word buflen:int64) (word(8 * N)))` THENL
-      [(* Subcase: X2 >= 8 — back edge branches, then CMP X9,X4 exits *)
-       (* CHEAT: stack overflow in ARM_STEPS_TAC with deeply nested terms *)
-       CHEAT_TAC;
+      [(* Subcase: X2 >= 8 — back edge branches to pc+108, then CMP X9>=X4 *)
+       (* branches forward to pc+256. Total 4 ARM steps. *)
+       (* Split with ENSURES_SEQUENCE_TAC at pc+108 to avoid ARM_STEPS_TAC *)
+       (* stack overflow with deeply nested niblen term. *)
+       ENSURES_SEQUENCE_TAC `pc + 108`
+        `\s. aligned_bytes_loaded s (word pc) mldsa_rej_uniform_eta4_mc /\
+             read PC s = word(pc + 108) /\
+             read X0 s = res /\ read X4 s = word 256 /\
+             read X8 s = stackpointer /\
+             read Q7 s = word 20769504351625144638033088116686852 /\
+             read X9 s = word niblen /\
+             read (memory :> bytes (stackpointer,2 * niblen)) s =
+             num_of_wordlist (REJ_NIBBLES_ETA4(SUB_LIST(0,8*N) inlist):int16 list) /\
+             ALL (nonoverlapping (res,1024)) [(word pc,344); (stackpointer,576)]` THEN
+       CONJ_TAC THENL
+        [(* pc+248 -> pc+108: CMP X2,8; BCS back *)
+         ENSURES_INIT_TAC "s0" THEN
+         ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+         ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+         REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+         CONJ_TAC THENL [NONOVERLAPPING_TAC; NONOVERLAPPING_TAC];
+         (* pc+108 -> pc+256: CMP X9,X4; BCS forward since X9=niblen>=256 *)
+         ENSURES_INIT_TAC "s0" THEN
+         SUBGOAL_THEN `256 <= val(word niblen:int64)` ASSUME_TAC THENL
+          [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+           SUBGOAL_THEN `niblen MOD 18446744073709551616 = niblen`
+            SUBST1_TAC THENL
+            [MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `niblen < 272` THEN
+             ARITH_TAC;
+             ASM_REWRITE_TAC[]];
+           ALL_TAC] THEN
+         ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+         ENSURES_FINAL_STATE_TAC THEN
+         REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+         EXISTS_TAC `N:num` THEN
+         CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+         UNDISCH_TAC `niblen < 272` THEN EXPAND_TAC "niblen" THEN
+         ARITH_TAC];
        (* Subcase: X2 < 8 — falls through *)
        ENSURES_INIT_TAC "s0" THEN
        ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
