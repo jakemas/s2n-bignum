@@ -902,6 +902,8 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
      GHOST_INTRO_TAC `nibbles1:int128` `read Q17` THEN
      ENSURES_INIT_TAC "s0" THEN
      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+     (* Preserve d = loaded memory for later use in the counting bridge *)
+     ABBREV_TAC `d:int64 = read (memory :> bytes64 (word_add buf (word (8 * i)))) s3` THEN
      SUBGOAL_THEN `~(256 <= val(word curlen:int64))` ASSUME_TAC THENL
       [REWRITE_TAC[NOT_LE; VAL_WORD; DIMINDEX_64] THEN
        CONV_TAC NUM_REDUCE_CONV THEN
@@ -911,9 +913,10 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
          ARITH_TAC; UNDISCH_TAC `curlen < 256` THEN ARITH_TAC];
        ALL_TAC] THEN
      RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(256 <= val(word curlen:int64))`]) THEN
-     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--11) THEN
-     ABBREV_TAC `nibbles0:int128 = read Q16 s11` THEN
-     ABBREV_TAC `nibbles1b:int128 = read Q17 s11` THEN
+     (* Use verbose stepping for 3--11 so Q16 s11 / Q17 s11 remain as named hyps *)
+     ARM_VSTEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (3--11) THEN
+     REABBREV_TAC `nibbles0:int128 = read Q16 s11` THEN
+     REABBREV_TAC `nibbles1b:int128 = read Q17 s11` THEN
      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (12--19) THEN
      RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
      RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
@@ -946,7 +949,69 @@ e (REWRITE_TAC[LENGTH_MLDSA_REJ_UNIFORM_ETA4_MC;
            `bit k (word_subword (word_neg (word (bitval b):16 word))
                    (0,8):8 word) <=> b`)) (0--7)) THEN
          ASM_REWRITE_TAC[] THEN
-         CHEAT_TAC) THEN  (* CHEAT: counting bridge *)
+         (* Counting bridge: apply COUNT_BRIDGE_ABSTRACT with 16 halfword
+            identities derived from nibbles0 / nibbles1b = f(d). Remaining
+            obligation is that SUB_LIST(8*i,8) inlist = [bytes of d]. *)
+         (let prove_hw name pos byte_pos op =
+            let rhs_inner = if op = "and"
+              then Printf.sprintf
+                "(word_and (word_subword (d:int64) (%d,8):byte) (word 15):byte)"
+                byte_pos
+              else Printf.sprintf
+                "(word_ushr (word_subword (d:int64) (%d,8):byte) 4:byte)"
+                byte_pos in
+            let goal_str = Printf.sprintf
+              "(word_subword (%s:int128) (%d,16)):int16 = word_zx %s :int16"
+              name pos rhs_inner in
+            SUBGOAL_THEN (parse_term goal_str) ASSUME_TAC THENL
+             [FIRST_X_ASSUM(MP_TAC o SYM o check
+                (fun th -> let c = concl th in is_eq c &&
+                  (try fst(dest_var(rhs c)) = name with _ -> false))) THEN
+              DISCH_THEN(fun th -> SUBST1_TAC th THEN ASSUME_TAC(SYM th)) THEN
+              CONV_TAC WORD_BLAST;
+              ALL_TAC] in
+          prove_hw "nibbles0" 0 0 "and" THEN
+          prove_hw "nibbles0" 16 0 "ushr" THEN
+          prove_hw "nibbles0" 32 8 "and" THEN
+          prove_hw "nibbles0" 48 8 "ushr" THEN
+          prove_hw "nibbles0" 64 16 "and" THEN
+          prove_hw "nibbles0" 80 16 "ushr" THEN
+          prove_hw "nibbles0" 96 24 "and" THEN
+          prove_hw "nibbles0" 112 24 "ushr" THEN
+          prove_hw "nibbles1b" 0 32 "and" THEN
+          prove_hw "nibbles1b" 16 32 "ushr" THEN
+          prove_hw "nibbles1b" 32 40 "and" THEN
+          prove_hw "nibbles1b" 48 40 "ushr" THEN
+          prove_hw "nibbles1b" 64 48 "and" THEN
+          prove_hw "nibbles1b" 80 48 "ushr" THEN
+          prove_hw "nibbles1b" 96 56 "and" THEN
+          prove_hw "nibbles1b" 112 56 "ushr") THEN
+         MP_TAC(SPECL
+           [`nibbles0:int128`; `nibbles1b:int128`;
+            `word_subword (d:int64) (0,8):byte`;
+            `word_subword (d:int64) (8,8):byte`;
+            `word_subword (d:int64) (16,8):byte`;
+            `word_subword (d:int64) (24,8):byte`;
+            `word_subword (d:int64) (32,8):byte`;
+            `word_subword (d:int64) (40,8):byte`;
+            `word_subword (d:int64) (48,8):byte`;
+            `word_subword (d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT) THEN
+         ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+         DISCH_THEN SUBST1_TAC THEN
+         SUBGOAL_THEN
+           `SUB_LIST(8 * i, 8) (inlist:byte list) =
+            [word_subword (d:int64) (0,8):byte;
+             word_subword (d:int64) (8,8):byte;
+             word_subword (d:int64) (16,8):byte;
+             word_subword (d:int64) (24,8):byte;
+             word_subword (d:int64) (32,8):byte;
+             word_subword (d:int64) (40,8):byte;
+             word_subword (d:int64) (48,8):byte;
+             word_subword (d:int64) (56,8):byte]`
+           (fun th -> REWRITE_TAC[th] THEN
+             MP_TAC(SPEC `d:int64` NIBBLE_COUNTING_D) THEN
+             CONV_TAC(DEPTH_CONV let_CONV) THEN ARITH_TAC) THEN
+         CHEAT_TAC) THEN  (* CHEAT: SUB_LIST = [bytes of d] *)
      ASM_ARITH_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
