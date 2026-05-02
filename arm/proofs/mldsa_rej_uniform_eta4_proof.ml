@@ -1117,22 +1117,25 @@ e (DBG "01 START" THEN
    REPEAT CONJ_TAC THENL
     [DBG "15x final CONJ1" THEN AP_TERM_TAC THEN AP_TERM_TAC THEN
      (* Goal is 2 * ((curlen + val(word len0)) + val(word len1)) = 2 * (curlen + LENGTH newbatch).
-        Need val(word len0) = len0 (since len0 < 2^64) and val(word len1) = len1. *)
-     ONCE_REWRITE_TAC[GSYM(ASSUME `read X12 s1:int64 = word len0`)] THEN
-     ONCE_REWRITE_TAC[GSYM(ASSUME `read X13 s1:int64 = word len1`)] THEN
-     DBG "15x' after rewriting word back to read" THEN
-     ASM_REWRITE_TAC[] THEN ARITH_TAC;
+        Reduce val(word len_i) → len_i via VAL_WORD_EQ; bounds come from len_i = val(...). *)
+     SUBGOAL_THEN `val(word len0:int64) = len0 /\ val(word len1:int64) = len1`
+       (fun th -> REWRITE_TAC[th]) THENL
+      [CONJ_TAC THEN MATCH_MP_TAC VAL_WORD_EQ THEN
+       REWRITE_TAC[DIMINDEX_64] THEN ASM_ARITH_TAC;
+       DBG "15x' after val(word len_i) simplified" THEN
+       ASM_ARITH_TAC];
      DBG "15y final CONJ2" THEN
-     FIRST_X_ASSUM(fun th -> GEN_REWRITE_TAC
-       (RAND_CONV o RAND_CONV) [SYM th]) THEN
-     REWRITE_TAC[ARITH_RULE `a + b + c = a + (b + c)`] THEN
-     CONV_TAC WORD_RULE;
+     UNDISCH_TAC `len0 + len1 = LENGTH(newbatch:int16 list)` THEN
+     DISCH_THEN(SUBST1_TAC o SYM) THEN CONV_TAC WORD_RULE;
      DBG "15z final CONJ3 (CHEAT)" THEN CHEAT_TAC];
 
    (*** Subgoal 4: Back edge — 2 ARM steps from pc+248 to pc+108 ***)
+   DBG "16 subgoal4 back edge" THEN
    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   DBG "16a after let_CONV" THEN
    ENSURES_INIT_TAC "s0" THEN
+   DBG "16b after ENSURES_INIT" THEN
    SUBGOAL_THEN `8 <= val(word_sub (word buflen:int64) (word(8 * i)))`
    ASSUME_TAC THENL
     [SUBGOAL_THEN `8 * (i + 1) <= buflen` ASSUME_TAC THENL
@@ -1143,12 +1146,16 @@ e (DBG "01 START" THEN
        UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
      VAL_INT64_TAC `8 * i` THEN ASM_REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
      UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+   DBG "16c after 8<=val subgoal" THEN
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+   DBG "16d after ARM 1-2" THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
 
    (*** Subgoal 5: Post-loop exit — from pc+248 to pc+256 ***)
    (*** WOP: at i=N, either buffer exhausted or 256 <= niblen ***)
+   DBG "17 subgoal5 post-loop" THEN
    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+   DBG "17a after let_CONV" THEN
    ABBREV_TAC `niblen = LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0,8*N) inlist):int16 list)` THEN
    SUBGOAL_THEN `niblen < 272` ASSUME_TAC THENL
     [EXPAND_TAC "niblen" THEN
@@ -1159,10 +1166,13 @@ e (DBG "01 START" THEN
      ASM_REWRITE_TAC[];
      ALL_TAC] THEN
    VAL_INT64_TAC `niblen:num` THEN
+   DBG "17b after niblen setup" THEN
    ASM_CASES_TAC `256 <= niblen` THENL
     [(* Case: 256 <= niblen — enough samples *)
+     DBG "17c niblen>=256 case" THEN
      ASM_CASES_TAC `8 <= val(word_sub (word buflen:int64) (word(8 * N)))` THENL
       [(* Subcase: X2 >= 8 — back edge branches to pc+108, then CMP X9>=X4 *)
+       DBG "17d X2>=8 subcase" THEN
        (* branches forward to pc+256. Total 4 ARM steps. *)
        (* Split with ENSURES_SEQUENCE_TAC at pc+108 to avoid ARM_STEPS_TAC *)
        (* stack overflow with deeply nested niblen term. *)
@@ -1178,29 +1188,39 @@ e (DBG "01 START" THEN
              ALL (nonoverlapping (res,1024)) [(word pc,344); (stackpointer,576)]` THEN
        CONJ_TAC THENL
         [(* pc+248 -> pc+108: CMP X2,8; BCS back *)
+         DBG "17e firsthalf 248->108" THEN
          ENSURES_INIT_TAC "s0" THEN
+         DBG "17e1 after ENSURES_INIT" THEN
          ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+         DBG "17e2 after ARM 1-2" THEN
          ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+         DBG "17e3 after FINAL+ASM_REWRITE" THEN
          REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
          CONJ_TAC THENL [NONOVERLAPPING_TAC; NONOVERLAPPING_TAC];
          (* pc+108 -> pc+256: CMP X9,X4; BCS forward since X9=niblen>=256 *)
+         DBG "17f secondhalf 108->256" THEN
          ENSURES_INIT_TAC "s0" THEN
+         DBG "17f1 after ENSURES_INIT" THEN
          SUBGOAL_THEN `256 <= val(word niblen:int64)` ASSUME_TAC THENL
           [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
-           SUBGOAL_THEN `niblen MOD 18446744073709551616 = niblen`
-            SUBST1_TAC THENL
+           SUBGOAL_THEN `niblen MOD 2 EXP 64 = niblen` SUBST1_TAC THENL
             [MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `niblen < 272` THEN
              ARITH_TAC;
              ASM_REWRITE_TAC[]];
            ALL_TAC] THEN
          ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
+         DBG "17f2 after ARM 1-2" THEN
          ENSURES_FINAL_STATE_TAC THEN
+         DBG "17f3 after FINAL" THEN
          REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+         DBG "17f4 after REWRITE ALL" THEN
          EXISTS_TAC `N:num` THEN
          CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
+         DBG "17f5 after EXISTS+let_CONV" THEN
          UNDISCH_TAC `niblen < 272` THEN EXPAND_TAC "niblen" THEN
          ARITH_TAC];
        (* Subcase: X2 < 8 — falls through *)
+       DBG "17g X2<8 subcase" THEN
        ENSURES_INIT_TAC "s0" THEN
        ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--2) THEN
        ENSURES_FINAL_STATE_TAC THEN
