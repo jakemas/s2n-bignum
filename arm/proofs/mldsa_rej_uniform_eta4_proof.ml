@@ -203,6 +203,17 @@ let VAL_WORD_NIBBLE_LT = prove
   MP_TAC(ISPEC `b:byte` VAL_BOUND) THEN
   REWRITE_TAC[DIMINDEX_8] THEN ARITH_TAC);;
 
+(* FILTER length = sum of bitvals for 8 elements *)
+let FILTER_LENGTH_BITVAL = prove(
+  `!a b c d e f g h:int16.
+   LENGTH(FILTER (\x:int16. val x < 9) [a;b;c;d;e;f;g;h]) =
+   bitval(val a < 9) + bitval(val b < 9) + bitval(val c < 9) +
+   bitval(val d < 9) + bitval(val e < 9) + bitval(val f < 9) +
+   bitval(val g < 9) + bitval(val h < 9)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[FILTER] THEN
+  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[LENGTH; bitval]) THEN
+  ARITH_TAC);;
+
 let REJ_NIBBLES_COUNT_4 = prove
  (`!b0 b1 b2 b3:byte.
    LENGTH(FILTER (\x:int16. val x < 9) (NIBBLES_OF_BYTES [b0;b1;b2;b3])) =
@@ -381,17 +392,6 @@ let cnt_hw_tac =
   ONCE_REWRITE_TAC[WORD_AND_SYM] THEN
   REWRITE_TAC[POPCOUNT_AND_POWERS; BITVAL_BOUND];;
 
-(* FILTER length = sum of bitvals for 8 elements *)
-let FILTER_LENGTH_BITVAL = prove(
-  `!a b c d e f g h:int16.
-   LENGTH(FILTER (\x:int16. val x < 9) [a;b;c;d;e;f;g;h]) =
-   bitval(val a < 9) + bitval(val b < 9) + bitval(val c < 9) +
-   bitval(val d < 9) + bitval(val e < 9) + bitval(val f < 9) +
-   bitval(val g < 9) + bitval(val h < 9)`,
-  REPEAT GEN_TAC THEN REWRITE_TAC[FILTER] THEN
-  REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[LENGTH; bitval]) THEN
-  ARITH_TAC);;
-
 (* Exact UADDLV value = sum of bitvals (not just bound) *)
 let UADDLV_COUNT_LEMMA = prove
  (`!b0 b1 b2 b3 b4 b5 b6 b7.
@@ -467,6 +467,36 @@ let BYTE_NIBBLE_COUNT_EQ = prove(
    bitval(val b MOD 16 < 9) + bitval(val b DIV 16 < 9)`,
   GEN_TAC THEN
   REWRITE_TAC[VAL_WORD_ZX_BYTE16; BYTE_AND_15_MOD; BYTE_USHR4_DIV]);;
+
+(* Byte-indexed counting identity: for any d:int64, sum over j=0..7 of             *)
+(* bitvals for low/high nibbles of byte j equals                                   *)
+(* LENGTH(REJ_NIBBLES_ETA4 [byte0 d; byte1 d; ...; byte7 d]).                       *)
+(* This is NIBBLE_COUNTING_D — a lemma useful for closing CHEAT #2 when we have    *)
+(* expressed nibbles0 / nibbles1b as USHLL(ZIP1/ZIP2(AND/USHR of d)).               *)
+let NIBBLE_COUNTING_D = prove(
+ `!d:int64.
+    let b = \j. word_subword d (8 * j, 8):byte in
+    bitval(val(word_zx(word_and (b 0) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 0) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 1) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 1) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 2) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 2) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 3) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 3) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 4) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 4) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 5) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 5) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 6) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 6) 4:byte):int16) < 9) +
+    bitval(val(word_zx(word_and (b 7) (word 15):byte):int16) < 9) +
+    bitval(val(word_zx(word_ushr (b 7) 4:byte):int16) < 9) =
+    LENGTH(REJ_NIBBLES_ETA4 [b 0; b 1; b 2; b 3; b 4; b 5; b 6; b 7])`,
+  GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[REJ_NIBBLES_COUNT_8] THEN
+  REWRITE_TAC[VAL_WORD_ZX_BYTE16; BYTE_AND_15_MOD; BYTE_USHR4_DIV] THEN
+  ARITH_TAC);;
 
 (* Abstract counting bridge: given that nibbles0 and nibbles1b have halfwords       *)
 (* equal to byte-nibble expressions, the 16-halfword bitval sum equals              *)
