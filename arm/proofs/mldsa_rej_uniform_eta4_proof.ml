@@ -1079,12 +1079,63 @@ e (DBG "01 START" THEN
    (* Step 3 = ST1 Q17 at X7 = sp+2*(curlen+len0). *)
    ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC [3] THEN
    DBG "15l after ARM step 3 (STR Q17)" THEN
+   (* Reduce val(word len0) → len0 again (ARM_STEPS re-introduces it). *)
+   RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `val(word len0:int64) = len0`]) THEN
    (* Build memory equation covering APPEND (APPEND curlist lis0) lis1. *)
    SUBGOAL_THEN
     `read (memory :> bytes (stackpointer, 2 * ((curlen + len0) + len1))) s3 =
      num_of_wordlist(APPEND (APPEND curlist lis0) lis1:int16 list)`
    ASSUME_TAC THENL
-    [DBG "WB2 CHEAT" THEN CHEAT_TAC;
+    [REWRITE_TAC[LEFT_ADD_DISTRIB] THEN
+     DBG "WB2a start" THEN
+     DUMP_STATE_TAC "/tmp/eta4/wb2_start.txt" THEN
+     SUBGOAL_THEN
+       `LENGTH(APPEND curlist lis0:int16 list) = curlen + len0`
+     ASSUME_TAC THENL
+      [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+     DBG "WB2b after LENGTH APPEND" THEN
+     W(MP_TAC o PART_MATCH (lhand o rand)
+       BYTES_EQ_NUM_OF_WORDLIST_APPEND o snd) THEN
+     DBG "WB2c after PART_MATCH" THEN
+     ANTS_TAC THENL
+      [REWRITE_TAC[DIMINDEX_16] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+       ALL_TAC] THEN
+     DBG "WB2d after ANTS" THEN
+     DISCH_THEN SUBST1_TAC THEN
+     DBG "WB2e after SUBST1" THEN
+     (* Normalize split address so it matches the hyp. *)
+     SUBGOAL_THEN
+       `word_add stackpointer (word (2 * curlen + 2 * len0):int64) =
+        word_add stackpointer (word (2 * (curlen + len0)))`
+      (fun th -> REWRITE_TAC[th]) THENL
+      [CONV_TAC WORD_RULE; ALL_TAC] THEN
+     SUBGOAL_THEN `2 * curlen + 2 * len0 = 2 * (curlen + len0)`
+      SUBST1_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+     CONJ_TAC THENL
+      [ASM_REWRITE_TAC[];
+       DBG "WB2f in second CONJ" THEN
+       DUMP_STATE_TAC "/tmp/eta4/wb2_second_conj.txt" THEN
+       SUBGOAL_THEN
+        `read (memory :> bytes128
+               (word_add stackpointer (word (2 * (curlen + len0))))) s3 =
+         word(num_of_wordlist(lis1:int16 list)):int128`
+       MP_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+       DBG "WB2g after bytes128" THEN
+       DISCH_THEN(MP_TAC o AP_TERM `val:int128->num`) THEN
+       REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES128_WBYTES;
+                   VAL_READ_WBYTES;
+                   DIMINDEX_128; ARITH_RULE `128 DIV 8 = 16`] THEN
+       DBG "WB2h after WBYTES rewrites" THEN
+       SUBGOAL_THEN `2 * len1 = MIN 16 (2 * len1)` SUBST1_TAC THENL
+        [UNDISCH_TAC `len1:num <= 8` THEN ARITH_TAC;
+         REWRITE_TAC[GSYM READ_BYTES_MOD]] THEN
+       DBG "WB2i after MIN subst" THEN
+       DISCH_THEN SUBST1_TAC THEN REWRITE_TAC[VAL_WORD] THEN
+       REWRITE_TAC[DIMINDEX_128; MOD_MOD_EXP_MIN] THEN
+       MATCH_MP_TAC MOD_LT THEN
+       MATCH_MP_TAC NUM_OF_WORDLIST_BOUND_GEN THEN
+       ASM_REWRITE_TAC[DIMINDEX_16] THEN
+       UNDISCH_TAC `len1:num <= 8` THEN ARITH_TAC];
      ALL_TAC] THEN
    DBG "15l2 after memory curlist+lis0+lis1 at s3" THEN
    ARM_VERBOSE_STEP_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC "s4" THEN
