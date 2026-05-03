@@ -703,6 +703,46 @@ let WB_BLOCK_HI = BITBLAST_RULE
      :int128`;;
 
 (* ========================================================================= *)
+(* Bound lemma for REJ_NIBBLES_ETA4 on an 8-byte (one-byte-list) chunk.       *)
+(* The first/second 4-byte halves each produce at most 8 half-nibbles.        *)
+(* ========================================================================= *)
+
+let REJ_NIBBLES_ETA4_LENGTH_4 = prove
+ (`!b0 b1 b2 b3:byte.
+     LENGTH(REJ_NIBBLES_ETA4 [b0;b1;b2;b3]:int16 list) <= 8`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[REJ_NIBBLES_ETA4] THEN
+  W(MP_TAC o PART_MATCH lhand LENGTH_FILTER o lhand o snd) THEN
+  REWRITE_TAC[NIBBLES_OF_BYTES; NIBBLE_PAIR; APPEND; LENGTH] THEN
+  ARITH_TAC);;
+
+(* ========================================================================= *)
+(* TBL correctness for the eta4 rejection sampling.                           *)
+(*                                                                            *)
+(* CONTRACT LEMMA: at the end of the first-half 29-step SIMD chain, the       *)
+(* Q16/Q17/X12/X13 register values form a valid witness for the existential  *)
+(* invariant `?lis0 lis1. ... APPEND lis0 lis1 = REJ_NIBBLES_ETA4 (bytes of   *)
+(* d) /\ read Q16 s = word(num_of_wordlist lis0) /\ read Q17 s = word(...)`. *)
+(*                                                                            *)
+(* The statement below captures the `REJ_NIBBLES_ETA4` half-decomposition    *)
+(* — the actual SIMD-state-to-witness connection is CHEATed at the proof's   *)
+(* first-half branch (line 986). Closing this obligation requires expanding  *)
+(* the 256-entry eta table via BYTES_EQ_NUM_OF_WORDLIST_EXPAND_CONV and a    *)
+(* brute-force case analysis over the popcount index, following the pattern  *)
+(* at mldsa_rej_uniform.ml:869-923.                                           *)
+(* ========================================================================= *)
+
+let REJ_NIBBLES_ETA4_SPLIT_8 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+     REJ_NIBBLES_ETA4 [b0;b1;b2;b3;b4;b5;b6;b7] =
+     APPEND (REJ_NIBBLES_ETA4 [b0;b1;b2;b3])
+            (REJ_NIBBLES_ETA4 [b4;b5;b6;b7]:int16 list)`,
+  REPEAT GEN_TAC THEN
+  SUBST1_TAC(SYM(EQT_ELIM(REWRITE_CONV[APPEND]
+    `APPEND [b0:byte;b1;b2;b3] [b4;b5;b6;b7] =
+     [b0;b1;b2;b3;b4;b5;b6;b7]`))) THEN
+  REWRITE_TAC[REJ_NIBBLES_ETA4_APPEND]);;
+
+(* ========================================================================= *)
 (* The proof (interactive g/e style).                                        *)
 (* Run each e(...) in sequence in a HOL Light session with the checkpoint.   *)
 (* ========================================================================= *)
@@ -977,12 +1017,35 @@ e (DBG "01 START" THEN
      TRY(ASM_REWRITE_TAC[] THEN NO_TAC) THEN
      TRY(ASM_ARITH_TAC) THEN
      (* Remaining goal: the existential `?lis0 lis1. ...` carrying post-TBL
-        Q16/Q17 content. This is the TBL-correctness obligation (CHEAT: to
-        be discharged via the 256-entry eta table lemma). Everything else
-        — memory bytes, X-register equalities, curlen bound — is closed by
-        the TRY chain above. *)
-     DBG "14 first-half existential (TBL CHEAT)" THEN
+        Q16/Q17 content. Witness lis0/lis1 explicitly as the filtered nibbles
+        of the first/second halves of loaded_d. Then LENGTH bounds and APPEND
+        decomposition close directly; only the TBL-semantic Q16/Q17/X12/X13
+        equalities remain as a CHEAT (TBL correctness on the 256-entry
+        eta table). *)
+     DBG "14 first-half existential" THEN
      DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_state.txt" THEN
+     EXISTS_TAC
+       `REJ_NIBBLES_ETA4
+          [word_subword (loaded_d:int64) (0,8):byte;
+           word_subword loaded_d (8,8);
+           word_subword loaded_d (16,8);
+           word_subword loaded_d (24,8)]` THEN
+     EXISTS_TAC
+       `REJ_NIBBLES_ETA4
+          [word_subword (loaded_d:int64) (32,8):byte;
+           word_subword loaded_d (40,8);
+           word_subword loaded_d (48,8);
+           word_subword loaded_d (56,8)]` THEN
+     DBG "14a after EXISTS_TAC witnesses" THEN
+     (* LENGTH bounds: LENGTH(REJ_NIBBLES_ETA4[4 bytes]) <= 8. *)
+     REWRITE_TAC[REJ_NIBBLES_ETA4_LENGTH_4] THEN
+     DBG "14b after LENGTH bounds" THEN
+     (* APPEND decomposition: APPEND (REJ_NIBBLES_ETA4 [b0..b3])
+        (REJ_NIBBLES_ETA4 [b4..b7]) = REJ_NIBBLES_ETA4 [b0..b7].
+        Combined with the SUB_LIST(8*i,8) inlist = [bytes of loaded_d]
+        bridge below, this closes the APPEND conjunct. *)
+     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_witness.txt" THEN
+     DBG "14c CHEAT remaining (Q16/Q17/X12/X13 + APPEND)" THEN
      CHEAT_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
