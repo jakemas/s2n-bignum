@@ -1040,12 +1040,68 @@ e (DBG "01 START" THEN
      (* LENGTH bounds: LENGTH(REJ_NIBBLES_ETA4[4 bytes]) <= 8. *)
      REWRITE_TAC[REJ_NIBBLES_ETA4_LENGTH_4] THEN
      DBG "14b after LENGTH bounds" THEN
-     (* APPEND decomposition: APPEND (REJ_NIBBLES_ETA4 [b0..b3])
-        (REJ_NIBBLES_ETA4 [b4..b7]) = REJ_NIBBLES_ETA4 [b0..b7].
-        Combined with the SUB_LIST(8*i,8) inlist = [bytes of loaded_d]
-        bridge below, this closes the APPEND conjunct. *)
+     (* Derive SUB_LIST(8*i, 8) inlist = [word_subword loaded_d (0,8); ...;
+        (56,8)] from the memory-loaded bytes hypothesis. *)
+     SUBGOAL_THEN
+       `SUB_LIST(8 * i, 8) (inlist:byte list) =
+        [word_subword (loaded_d:int64) (0,8):byte;
+         word_subword loaded_d (8,8);
+         word_subword loaded_d (16,8);
+         word_subword loaded_d (24,8);
+         word_subword loaded_d (32,8);
+         word_subword loaded_d (40,8);
+         word_subword loaded_d (48,8);
+         word_subword loaded_d (56,8)]`
+     ASSUME_TAC THENL
+      [DBG "14b1 start SUB_LIST bridge" THEN
+       CONV_TAC SYM_CONV THEN
+       REWRITE_TAC[LISTS_NUM_OF_WORDLIST_EQ] THEN CONJ_TAC THENL
+        [REWRITE_TAC[LENGTH; LENGTH_SUB_LIST] THEN
+         UNDISCH_TAC `LENGTH(inlist:byte list) = buflen` THEN
+         UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
+         ALL_TAC] THEN
+       REWRITE_TAC[NUM_OF_WORDLIST_SUB_LIST; DIMINDEX_8] THEN
+       MP_TAC(ASSUME `read (memory :> bytes (buf,buflen)) s29 =
+                      num_of_wordlist (inlist:byte list)`) THEN
+       DISCH_THEN(MP_TAC o AP_TERM
+         `\x. x DIV 2 EXP (8 * 8 * i) MOD 2 EXP (8 * 8)`) THEN
+       CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+       REWRITE_TAC[READ_COMPONENT_COMPOSE;
+                   READ_BYTES_DIV; READ_BYTES_MOD] THEN
+       SUBGOAL_THEN `MIN (buflen - 8 * i) 8 = 8` SUBST1_TAC THENL
+        [UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC;
+         ALL_TAC] THEN
+       MP_TAC(ISPECL
+         [`word_add buf (word (8 * i)):int64`; `read memory s29`]
+         (INST_TYPE[`:64`,`:N`] VAL_READ_WBYTES)) THEN
+       REWRITE_TAC[DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
+       REWRITE_TAC[GSYM BYTES64_WBYTES; GSYM READ_COMPONENT_COMPOSE] THEN
+       ASM_REWRITE_TAC[] THEN
+       DISCH_THEN(ASSUME_TAC o SYM) THEN DISCH_TAC THEN
+       SUBGOAL_THEN
+        `num_of_wordlist
+          [(word_subword (loaded_d:int64) (0,8):byte);
+           (word_subword loaded_d (8,8):byte);
+           (word_subword loaded_d (16,8):byte);
+           (word_subword loaded_d (24,8):byte);
+           (word_subword loaded_d (32,8):byte);
+           (word_subword loaded_d (40,8):byte);
+           (word_subword loaded_d (48,8):byte);
+           (word_subword loaded_d (56,8):byte)] =
+         val(loaded_d:int64)` SUBST1_TAC THENL
+        [REWRITE_TAC[num_of_wordlist; DIMINDEX_8] THEN
+         CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_BLAST;
+         ASM_MESON_TAC[]];
+       ALL_TAC] THEN
+     DBG "14b2 after SUB_LIST bridge" THEN
+     (* Rewrite the target list via the SUB_LIST bridge and decompose via
+        REJ_NIBBLES_ETA4_SPLIT_8.  This closes the APPEND conjunct once we
+        advance through the preceding val(word_zx ...) = LENGTH ... conjuncts
+        via REPEAT CONJ_TAC. Everything else CHEATed. *)
+     ASM_REWRITE_TAC[REJ_NIBBLES_ETA4_SPLIT_8] THEN
+     DBG "14b3 after ASM_REWRITE SPLIT_8" THEN
      DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_witness.txt" THEN
-     DBG "14c CHEAT remaining (Q16/Q17/X12/X13 + APPEND)" THEN
+     DBG "14c CHEAT remaining (Q16/Q17/X12/X13 val + APPEND)" THEN
      CHEAT_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
