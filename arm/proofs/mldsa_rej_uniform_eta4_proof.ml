@@ -1161,77 +1161,84 @@ e (DBG "01 START" THEN
         REJ_NIBBLES_ETA4_SPLIT_8 to close the APPEND conjunct. *)
      ASM_REWRITE_TAC[REJ_NIBBLES_ETA4_SPLIT_8] THEN
      DBG "14b3 after ASM_REWRITE SPLIT_8" THEN
-     (* Close the two val(word_zx(word_add ...)) = LENGTH(REJ_NIBBLES_ETA4
-        [4 bytes]) conjuncts (X12 / X13 popcount-to-length bridges) via
-        UADDLV_COUNT_LEMMA + COUNT_BRIDGE_ABSTRACT_4. Leave the Q16/Q17 =
-        word(num_of_wordlist ...) conjuncts as CHEAT (TBL correctness). *)
+     (* Establish the 16 halfword identities ONCE at the top (instead of
+        inside TRY per conjunct). These are: word_subword nibbles0 (k*16,16)
+        = word_zx(nibble_k of loaded_d's first 4 bytes), and analogously
+        for nibbles1b's second 4 bytes. *)
+     REWRITE_TAC[UADDLV_COUNT_LEMMA] THEN
+     REWRITE_TAC(List.map (fun k -> BITBLAST_RULE
+       (vsubst [mk_small_numeral k, `k:num`]
+       `bit k (word_subword (word_neg (word (bitval b):16 word))
+               (0,8):8 word) <=> b`)) (0--7)) THEN
+     DBG "14b4 after bit-k rewrites" THEN
+     ASM_REWRITE_TAC[] THEN
+     DBG "14b5 after ASM_REWRITE" THEN
+     (let prove_hw name pos byte_pos op =
+        let rhs_inner = if op = "and"
+          then Printf.sprintf
+            "(word_and (word_subword (loaded_d:int64) (%d,8):byte) (word 15):byte)"
+            byte_pos
+          else Printf.sprintf
+            "(word_ushr (word_subword (loaded_d:int64) (%d,8):byte) 4:byte)"
+            byte_pos in
+        let goal_str = Printf.sprintf
+          "(word_subword (%s:int128) (%d,16)):int16 = word_zx %s :int16"
+          name pos rhs_inner in
+        SUBGOAL_THEN (parse_term goal_str) ASSUME_TAC THENL
+         [FIRST_X_ASSUM(MP_TAC o SYM o check
+            (fun th -> let c = concl th in is_eq c &&
+              (try fst(dest_var(rhs c)) = name with _ -> false))) THEN
+          DISCH_THEN(fun th -> SUBST1_TAC th THEN ASSUME_TAC(SYM th)) THEN
+          CONV_TAC WORD_BLAST;
+          ALL_TAC] in
+      prove_hw "nibbles0" 0 0 "and" THEN
+      prove_hw "nibbles0" 16 0 "ushr" THEN
+      prove_hw "nibbles0" 32 8 "and" THEN
+      prove_hw "nibbles0" 48 8 "ushr" THEN
+      prove_hw "nibbles0" 64 16 "and" THEN
+      prove_hw "nibbles0" 80 16 "ushr" THEN
+      prove_hw "nibbles0" 96 24 "and" THEN
+      prove_hw "nibbles0" 112 24 "ushr" THEN
+      prove_hw "nibbles1b" 0 32 "and" THEN
+      prove_hw "nibbles1b" 16 32 "ushr" THEN
+      prove_hw "nibbles1b" 32 40 "and" THEN
+      prove_hw "nibbles1b" 48 40 "ushr" THEN
+      prove_hw "nibbles1b" 64 48 "and" THEN
+      prove_hw "nibbles1b" 80 48 "ushr" THEN
+      prove_hw "nibbles1b" 96 56 "and" THEN
+      prove_hw "nibbles1b" 112 56 "ushr") THEN
+     DBG "14b6 after prove_hw 16x" THEN
+     (* Now split conjuncts and close each one. *)
      REPEAT CONJ_TAC THEN
      DBG "14c after REPEAT CONJ_TAC" THEN
-     TRY(
-       REWRITE_TAC[UADDLV_COUNT_LEMMA] THEN
-       REWRITE_TAC(List.map (fun k -> BITBLAST_RULE
-         (vsubst [mk_small_numeral k, `k:num`]
-         `bit k (word_subword (word_neg (word (bitval b):16 word))
-                 (0,8):8 word) <=> b`)) (0--7)) THEN
-       DBG "14d after bit-k rewrites" THEN
-       ASM_REWRITE_TAC[] THEN
-       DBG "14e after ASM_REWRITE" THEN
-       (let prove_hw name pos byte_pos op =
-          let rhs_inner = if op = "and"
-            then Printf.sprintf
-              "(word_and (word_subword (loaded_d:int64) (%d,8):byte) (word 15):byte)"
-              byte_pos
-            else Printf.sprintf
-              "(word_ushr (word_subword (loaded_d:int64) (%d,8):byte) 4:byte)"
-              byte_pos in
-          let goal_str = Printf.sprintf
-            "(word_subword (%s:int128) (%d,16)):int16 = word_zx %s :int16"
-            name pos rhs_inner in
-          SUBGOAL_THEN (parse_term goal_str) ASSUME_TAC THENL
-           [FIRST_X_ASSUM(MP_TAC o SYM o check
-              (fun th -> let c = concl th in is_eq c &&
-                (try fst(dest_var(rhs c)) = name with _ -> false))) THEN
-            DISCH_THEN(fun th -> SUBST1_TAC th THEN ASSUME_TAC(SYM th)) THEN
-            CONV_TAC WORD_BLAST;
-            ALL_TAC] in
-        prove_hw "nibbles0" 0 0 "and" THEN
-        prove_hw "nibbles0" 16 0 "ushr" THEN
-        prove_hw "nibbles0" 32 8 "and" THEN
-        prove_hw "nibbles0" 48 8 "ushr" THEN
-        prove_hw "nibbles0" 64 16 "and" THEN
-        prove_hw "nibbles0" 80 16 "ushr" THEN
-        prove_hw "nibbles0" 96 24 "and" THEN
-        prove_hw "nibbles0" 112 24 "ushr" THEN
-        prove_hw "nibbles1b" 0 32 "and" THEN
-        prove_hw "nibbles1b" 16 32 "ushr" THEN
-        prove_hw "nibbles1b" 32 40 "and" THEN
-        prove_hw "nibbles1b" 48 40 "ushr" THEN
-        prove_hw "nibbles1b" 64 48 "and" THEN
-        prove_hw "nibbles1b" 80 48 "ushr" THEN
-        prove_hw "nibbles1b" 96 56 "and" THEN
-        prove_hw "nibbles1b" 112 56 "ushr") THEN
-       DBG "14f after prove_hw 16x" THEN
-       FIRST
-        [MP_TAC(SPECL
-          [`nibbles0:int128`;
-           `word_subword (loaded_d:int64) (0,8):byte`;
-           `word_subword (loaded_d:int64) (8,8):byte`;
-           `word_subword (loaded_d:int64) (16,8):byte`;
-           `word_subword (loaded_d:int64) (24,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
-         ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
-         DISCH_THEN SUBST1_TAC THEN REFL_TAC;
-         MP_TAC(SPECL
-          [`nibbles1b:int128`;
-           `word_subword (loaded_d:int64) (32,8):byte`;
-           `word_subword (loaded_d:int64) (40,8):byte`;
-           `word_subword (loaded_d:int64) (48,8):byte`;
-           `word_subword (loaded_d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
-         ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
-         DISCH_THEN SUBST1_TAC THEN REFL_TAC]) THEN
-     DBG "14g after TRY val-bridge" THEN
-     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_witness.txt" THEN
-     DBG "14h CHEAT remaining (Q16/Q17 TBL-output)" THEN
-     CHEAT_TAC;
+     (* Close each subgoal. FIRST-tries all 4 tactic branches per subgoal,
+        so only one matches each shape. *)
+     FIRST
+      [(* X12/X13 val-to-LENGTH: COUNT_BRIDGE_ABSTRACT_4 on nibbles0 *)
+       MP_TAC(SPECL
+        [`nibbles0:int128`;
+         `word_subword (loaded_d:int64) (0,8):byte`;
+         `word_subword (loaded_d:int64) (8,8):byte`;
+         `word_subword (loaded_d:int64) (16,8):byte`;
+         `word_subword (loaded_d:int64) (24,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
+       ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+       DISCH_THEN SUBST1_TAC THEN REFL_TAC;
+       MP_TAC(SPECL
+        [`nibbles1b:int128`;
+         `word_subword (loaded_d:int64) (32,8):byte`;
+         `word_subword (loaded_d:int64) (40,8):byte`;
+         `word_subword (loaded_d:int64) (48,8):byte`;
+         `word_subword (loaded_d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
+       ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+       DISCH_THEN SUBST1_TAC THEN REFL_TAC;
+       (* Q16 / Q17: MATCH_MP_TAC TBL_ETA4_OUTPUT with correct nibbles witness *)
+       MATCH_MP_TAC TBL_ETA4_OUTPUT THEN
+       EXISTS_TAC `nibbles0:int128` THEN
+       REPEAT CONJ_TAC THEN FIRST_ASSUM ACCEPT_TAC;
+       MATCH_MP_TAC TBL_ETA4_OUTPUT THEN
+       EXISTS_TAC `nibbles1b:int128` THEN
+       REPEAT CONJ_TAC THEN FIRST_ASSUM ACCEPT_TAC];
+     DBG "14e after FIRST branches" THEN
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
    DBG "15 second half start" THEN
