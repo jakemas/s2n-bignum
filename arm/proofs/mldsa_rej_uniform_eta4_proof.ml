@@ -759,6 +759,41 @@ let REJ_NIBBLES_ETA4_LENGTH_4 = prove
 (* at mldsa_rej_uniform.ml:869-923.                                           *)
 (* ========================================================================= *)
 
+(* TBL_ETA4_OUTPUT: abstract contract for the eta-table TBL correctness.
+   Given that the SIMD intermediate `nibbles` contains 8 halfwords that each
+   equal word_zx of a nibble (either word_and b (word 15) or word_ushr b 4)
+   of 4 bytes b0..b3, the TBL instruction applied to (nibbles, eta_table[k])
+   where k is the popcount mask index produces an int128 whose val equals
+   num_of_wordlist(REJ_NIBBLES_ETA4 [b0;b1;b2;b3]). The premise captures the
+   ARM TBL semantics via `is_rej_tbl_output_eta4 r nibbles b0..b3` abstractly;
+   in the final proof this would unfold to a concrete BYTES_EQ_NUM_OF_WORDLIST
+   + 256-entry table case analysis (cf. mldsa_rej_uniform.ml:869-923). *)
+
+(* TBL_ETA4_OUTPUT: the single named CHEAT that encapsulates the TBL
+   correctness for the eta-table, discharging the two Q16/Q17 equalities
+   in the first-half existential. Premise: 8 halfword structural identities
+   (nibbles = f(4 bytes)). Conclusion: any q_final = word(num_of_wordlist(
+   REJ_NIBBLES_ETA4 [4 bytes])). This is UNSOUND as stated (q_final is
+   universally quantified with no dependency on bytes), and so is an
+   explicit admitted lemma. The genuine proof will parameterize q_final
+   as the TBL output and perform the 256-entry case analysis (see note
+   above). *)
+
+let TBL_ETA4_OUTPUT = prove
+ (`!q_final:int128 nibbles:int128 b0 b1 b2 b3:byte.
+     word_subword nibbles (0,16):int16 = word_zx(word_and b0 (word 15):byte) /\
+     word_subword nibbles (16,16):int16 = word_zx(word_ushr b0 4:byte) /\
+     word_subword nibbles (32,16):int16 = word_zx(word_and b1 (word 15):byte) /\
+     word_subword nibbles (48,16):int16 = word_zx(word_ushr b1 4:byte) /\
+     word_subword nibbles (64,16):int16 = word_zx(word_and b2 (word 15):byte) /\
+     word_subword nibbles (80,16):int16 = word_zx(word_ushr b2 4:byte) /\
+     word_subword nibbles (96,16):int16 = word_zx(word_and b3 (word 15):byte) /\
+     word_subword nibbles (112,16):int16 = word_zx(word_ushr b3 4:byte)
+     ==>
+     q_final = word(num_of_wordlist
+                     (REJ_NIBBLES_ETA4 [b0;b1;b2;b3]))`,
+  CHEAT_TAC);;
+
 let REJ_NIBBLES_ETA4_SPLIT_8 = prove
  (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
      REJ_NIBBLES_ETA4 [b0;b1;b2;b3;b4;b5;b6;b7] =
@@ -1051,7 +1086,7 @@ e (DBG "01 START" THEN
         equalities remain as a CHEAT (TBL correctness on the 256-entry
         eta table). *)
      DBG "14 first-half existential" THEN
-     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_state.txt" THEN
+     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_state_pre.txt" THEN
      EXISTS_TAC
        `REJ_NIBBLES_ETA4
           [word_subword (loaded_d:int64) (0,8):byte;
@@ -1195,7 +1230,7 @@ e (DBG "01 START" THEN
          DISCH_THEN SUBST1_TAC THEN REFL_TAC]) THEN
      DBG "14g after TRY val-bridge" THEN
      DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_witness.txt" THEN
-     DBG "14h CHEAT remaining (Q16/Q17)" THEN
+     DBG "14h CHEAT remaining (Q16/Q17 TBL-output)" THEN
      CHEAT_TAC;
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
