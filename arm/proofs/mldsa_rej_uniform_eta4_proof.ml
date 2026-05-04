@@ -1185,6 +1185,46 @@ let MAP_F_REJ_NIBBLES = prove
      REJ_SAMPLE_ETA4 l`,
   REWRITE_TAC[REJ_SAMPLE_ETA4]);;
 
+(* SUB_LIST_256_PREFIX_LARGE: when 256 <= niblen (= LENGTH of the processed
+   REJ_NIBBLES_ETA4 prefix), SUB_LIST(0,256) of REJ_SAMPLE_ETA4 on the full
+   inlist equals SUB_LIST(0,256) of REJ_SAMPLE_ETA4 on just the 8*nn-byte prefix. *)
+
+let SUB_LIST_256_PREFIX_LARGE = prove
+ (`!inlist:byte list. !nn:num.
+     8 * nn <= LENGTH inlist /\
+     256 <= LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0, 8*nn) inlist):int16 list)
+     ==>
+     SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist) =
+     SUB_LIST(0,256)(REJ_SAMPLE_ETA4 (SUB_LIST(0, 8*nn) inlist))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`8 * nn:num`; `inlist:byte list`]
+                REJ_SAMPLE_ETA4_SUB_LIST_PREFIX) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  DISCH_THEN(X_CHOOSE_THEN `rest:int32 list` (fun th ->
+    GEN_REWRITE_TAC (LAND_CONV o RAND_CONV) [SYM th])) THEN
+  MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
+  REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN ASM_REWRITE_TAC[]);;
+
+(* SUB_LIST_8nn_INLIST: when buflen < 8*(nn+1) and 8 divides buflen,
+   SUB_LIST(0, 8*nn) inlist = inlist. *)
+
+let SUB_LIST_8nn_INLIST = prove
+ (`!inlist:byte list. !nn:num. !buflen:num.
+     8 divides buflen /\
+     buflen < 8 * (nn + 1) /\
+     LENGTH inlist = buflen
+     ==>
+     SUB_LIST(0, 8 * nn) inlist = inlist`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC SUB_LIST_REFL THEN
+  UNDISCH_TAC `8 divides buflen` THEN REWRITE_TAC[divides] THEN
+  DISCH_THEN(X_CHOOSE_THEN `k:num` SUBST_ALL_TAC) THEN
+  UNDISCH_TAC `LENGTH(inlist:byte list) = 8 * k` THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[LE_MULT_LCANCEL] THEN
+  UNDISCH_TAC `8 * k < 8 * (nn + 1)` THEN
+  REWRITE_TAC[LT_MULT_LCANCEL] THEN ARITH_TAC);;
+
 (* WORD_JOIN_4_INT32S_EQ_NUM_OF_WORDLIST: word_join ladder of 4 int32s is the     *)
 (* canonical word(num_of_wordlist [4 int32s]) form. *)
 
