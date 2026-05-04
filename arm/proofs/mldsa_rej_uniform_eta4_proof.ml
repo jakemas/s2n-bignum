@@ -1185,6 +1185,40 @@ let MAP_F_REJ_NIBBLES = prove
      REJ_SAMPLE_ETA4 l`,
   REWRITE_TAC[REJ_SAMPLE_ETA4]);;
 
+(* WORD_OF_NUM_4INT16: word(num_of_wordlist [h0;h1;h2;h3]):int64 in word_join form. *)
+
+let WORD_OF_NUM_4INT16 = prove
+ (`!h0 h1 h2 h3:int16.
+     word (num_of_wordlist [h0;h1;h2;h3]):int64 =
+     word_join (word_join h3 h2:int32) (word_join h1 h0:int32)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_wordlist; DIMINDEX_16; MULT_CLAUSES; ADD_CLAUSES] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_32;
+              DIMINDEX_16; VAL_WORD] THEN
+  MP_TAC(ISPEC `h0:int16` VAL_BOUND) THEN
+  MP_TAC(ISPEC `h1:int16` VAL_BOUND) THEN
+  MP_TAC(ISPEC `h2:int16` VAL_BOUND) THEN
+  MP_TAC(ISPEC `h3:int16` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_16] THEN REPEAT DISCH_TAC THEN
+  SUBGOAL_THEN `(2 EXP 16 * val(h3:int16) + val(h2:int16)) MOD 2 EXP 32 =
+                2 EXP 16 * val h3 + val h2` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(2 EXP 16 * val(h1:int16) + val(h0:int16)) MOD 2 EXP 32 =
+                2 EXP 16 * val h1 + val h0` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
+
+(* WORD_SUBWORD_JOIN_NOW_H: extracts the halfwords from word_join b_1 (word(num_of_wordlist [...])). *)
+
+let WORD_SUBWORD_JOIN_NOW_H = prove
+ (`!b_1:int64. !h0 h1 h2 h3:int16.
+     word_subword (word_join b_1 (word(num_of_wordlist [h0;h1;h2;h3]):int64):int128) (0,16):int16 = h0 /\
+     word_subword (word_join b_1 (word(num_of_wordlist [h0;h1;h2;h3]):int64):int128) (16,16):int16 = h1 /\
+     word_subword (word_join b_1 (word(num_of_wordlist [h0;h1;h2;h3]):int64):int128) (32,16):int16 = h2 /\
+     word_subword (word_join b_1 (word(num_of_wordlist [h0;h1;h2;h3]):int64):int128) (48,16):int16 = h3`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[WORD_OF_NUM_4INT16] THEN
+  CONV_TAC WORD_BLAST);;
+
 (* SUB_LIST_256_PREFIX_LARGE: when 256 <= niblen (= LENGTH of the processed
    REJ_NIBBLES_ETA4 prefix), SUB_LIST(0,256) of REJ_SAMPLE_ETA4 on the full
    inlist equals SUB_LIST(0,256) of REJ_SAMPLE_ETA4 on just the 8*nn-byte prefix. *)
@@ -1733,8 +1767,12 @@ e (DBG "01 START" THEN
        DBG "04p CASE_A after SPLIT bytes128->bytes64" THEN
        ASM_REWRITE_TAC[] THEN
        DBG "04q CASE_A after ASM_REWRITE" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_asmrewrite.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: ASM_REWRITE subs substituted 128 bytes64 reads *)
+       (* Case A CHEAT: final bridge showing the 128-int64 SSHLL expression
+          on LHS equals num_of_wordlist (MAP f (STACK_CONTENT niblist)) on RHS.
+          This requires connecting b_0..b_63 to halfwords of niblist via the
+          stack invariant bytes(sp, 2*niblen) = num_of_wordlist niblist. *)
+       DUMP_STATE_TAC "/tmp/eta4/case_a_final.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: final bridge CHEAT *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
