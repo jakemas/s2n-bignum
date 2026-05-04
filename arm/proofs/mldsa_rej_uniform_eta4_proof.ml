@@ -1191,19 +1191,23 @@ let MAP_F_REJ_NIBBLES = prove
 
 let SUB_LIST_256_PREFIX_LARGE = prove
  (`!inlist:byte list. !nn:num.
-     8 * nn <= LENGTH inlist /\
      256 <= LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0, 8*nn) inlist):int16 list)
      ==>
      SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist) =
      SUB_LIST(0,256)(REJ_SAMPLE_ETA4 (SUB_LIST(0, 8*nn) inlist))`,
   REPEAT STRIP_TAC THEN
-  MP_TAC(ISPECL [`8 * nn:num`; `inlist:byte list`]
+  ASM_CASES_TAC `8 * nn <= LENGTH(inlist:byte list)` THENL
+   [MP_TAC(ISPECL [`8 * nn:num`; `inlist:byte list`]
                 REJ_SAMPLE_ETA4_SUB_LIST_PREFIX) THEN
-  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
-  DISCH_THEN(X_CHOOSE_THEN `rest:int32 list` (fun th ->
-    GEN_REWRITE_TAC (LAND_CONV o RAND_CONV) [SYM th])) THEN
-  MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
-  REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN ASM_REWRITE_TAC[]);;
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    DISCH_THEN(X_CHOOSE_THEN `rest:int32 list` (fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o RAND_CONV) [SYM th])) THEN
+    MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN
+    REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN ASM_REWRITE_TAC[];
+    (* Case: 8*nn > LENGTH inlist. Then SUB_LIST(0, 8*nn) inlist = inlist. *)
+    SUBGOAL_THEN `SUB_LIST(0, 8 * nn) (inlist:byte list) = inlist` SUBST1_TAC THENL
+     [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_ARITH_TAC;
+      REFL_TAC]]);;
 
 (* SUB_LIST_8nn_INLIST: when buflen < 8*(nn+1) and 8 divides buflen,
    SUB_LIST(0, 8*nn) inlist = inlist. *)
@@ -1665,7 +1669,50 @@ e (DBG "01 START" THEN
      COND_CASES_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC;
      (* Conjunct 2: read memory s245 = num_of_wordlist SUB_LIST. *)
      DUMP_STATE_TAC "/tmp/eta4/cheat1_state.txt" THEN
-     CHEAT_TAC]] THEN  (* CHEAT: writeback memory content *)
+     (* Stage 1: split on WOP disjunction — 1 CHEAT becomes 2, enabling
+        independent work on each case. *)
+     FIRST_X_ASSUM(DISJ_CASES_THEN ASSUME_TAC) THENL
+      [(* Case B: buflen < 8*(nn+1). SUB_LIST(0, 8*nn) inlist = inlist. *)
+       DBG "04k CASE_B buflen<..." THEN
+       SUBGOAL_THEN `SUB_LIST(0, 8 * nn) (inlist:byte list) = inlist`
+         ASSUME_TAC THENL
+        [MATCH_MP_TAC SUB_LIST_8nn_INLIST THEN EXISTS_TAC `buflen:num` THEN
+         ASM_REWRITE_TAC[];
+         ALL_TAC] THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_b.txt" THEN
+       CHEAT_TAC;
+       (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
+          prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
+       DBG "04k CASE_A 256<=niblen" THEN
+       SUBGOAL_THEN `MIN 256 niblen = 256` SUBST1_TAC THENL
+        [ASM_ARITH_TAC; ALL_TAC] THEN
+       REWRITE_TAC[ARITH_RULE `4 * 256 = 1024`] THEN
+       (* Prefix bridge: SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist) =
+          SUB_LIST(0,256)(MAP f niblist). *)
+       SUBGOAL_THEN
+        `SUB_LIST(0,256)(REJ_SAMPLE_ETA4 (inlist:byte list)) =
+         SUB_LIST(0,256)(MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
+                           (niblist:int16 list))`
+       SUBST1_TAC THENL
+        [MP_TAC(SPECL [`inlist:byte list`; `nn:num`] SUB_LIST_256_PREFIX_LARGE) THEN
+         ANTS_TAC THENL
+          [(* 256 <= LENGTH(REJ_NIBBLES_ETA4(SUB_LIST(0, 8*nn) inlist)) *)
+           UNDISCH_TAC
+             `REJ_NIBBLES_ETA4 (SUB_LIST(0,8 * nn) (inlist:byte list)) =
+              (niblist:int16 list)` THEN
+           DISCH_THEN SUBST1_TAC THEN
+           UNDISCH_TAC `LENGTH(niblist:int16 list) = niblen` THEN
+           DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[];
+           ALL_TAC] THEN
+         DISCH_THEN SUBST1_TAC THEN AP_TERM_TAC THEN
+         ASM_REWRITE_TAC[REJ_SAMPLE_ETA4];
+         ALL_TAC] THEN
+       DBG "04l CASE_A after prefix bridge" THEN
+       (* SUB_LIST_MAP: SUB_LIST(0,256)(MAP f L) = MAP f (SUB_LIST(0,256) L) *)
+       REWRITE_TAC[SUB_LIST_MAP] THEN
+       DBG "04m CASE_A after SUB_LIST_MAP" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_map.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: Case A goal now bytes(res,1024) = num_of_wordlist(MAP f (SUB_LIST(0,256) niblist)) *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
