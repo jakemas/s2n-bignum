@@ -1731,8 +1731,10 @@ e (DBG "01 START" THEN
        (* Split each bytes128 hyp into two bytes64 hyps via READ_MEMORY_SPLIT_CONV. *)
        RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1))) THEN
        DBG "04p CASE_A after SPLIT bytes128->bytes64" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_split.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: bytes128->bytes64 split applied *)
+       ASM_REWRITE_TAC[] THEN
+       DBG "04q CASE_A after ASM_REWRITE" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_asmrewrite.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: ASM_REWRITE subs substituted 128 bytes64 reads *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
