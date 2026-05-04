@@ -1672,7 +1672,8 @@ e (DBG "01 START" THEN
      (* Stage 1: split on WOP disjunction — 1 CHEAT becomes 2, enabling
         independent work on each case. *)
      FIRST_X_ASSUM(DISJ_CASES_THEN ASSUME_TAC) THENL
-      [(* Case B: buflen < 8*(nn+1). SUB_LIST(0, 8*nn) inlist = inlist. *)
+      [(* Case B: buflen < 8*(nn+1). SUB_LIST(0, 8*nn) inlist = inlist,
+          so niblist = REJ_NIBBLES_ETA4 inlist. *)
        DBG "04k CASE_B buflen<..." THEN
        SUBGOAL_THEN `SUB_LIST(0, 8 * nn) (inlist:byte list) = inlist`
          ASSUME_TAC THENL
@@ -1711,8 +1712,19 @@ e (DBG "01 START" THEN
        (* SUB_LIST_MAP: SUB_LIST(0,256)(MAP f L) = MAP f (SUB_LIST(0,256) L) *)
        REWRITE_TAC[SUB_LIST_MAP] THEN
        DBG "04m CASE_A after SUB_LIST_MAP" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_map.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: Case A goal now bytes(res,1024) = num_of_wordlist(MAP f (SUB_LIST(0,256) niblist)) *)
+       (* Build the STACK_CONTENT bridge: SUB_LIST(0,256) niblist is what we care
+          about. In Case A, LENGTH niblist = niblen >= 256, so
+          STACK_CONTENT niblist = SUB_LIST(0, 256) niblist. *)
+       SUBGOAL_THEN
+         `SUB_LIST(0, 256) (niblist:int16 list) = STACK_CONTENT niblist`
+       SUBST1_TAC THENL
+        [CONV_TAC SYM_CONV THEN MATCH_MP_TAC STACK_CONTENT_LARGE THEN
+         UNDISCH_TAC `LENGTH(niblist:int16 list) = niblen` THEN
+         DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[];
+         ALL_TAC] THEN
+       DBG "04n CASE_A after STACK_CONTENT_LARGE" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_sc.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: Case A goal now bytes(res,1024) = num_of_wordlist(MAP f (STACK_CONTENT niblist)) *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
