@@ -1054,7 +1054,24 @@ e (DBG "01 START" THEN
       [word_ugt; relational2; GT; WORD_AND_MASK]) THEN
      RULE_ASSUM_TAC(ONCE_REWRITE_RULE[COND_RAND]) THEN
      RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
-     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (20--25) THEN
+     (* Mirror reference flow: REABBREV idx AFTER FMOV (step 19), ABBREV tab
+        BEFORE LDR Q24/Q25 (step 20), so tab0/tab1 equations survive.
+        Reference eta4 step mapping:
+          step 19 = FMOV W13 (ends X12/X13 popcount first pass)
+          step 20 = LDR Q24, step 21 = LDR Q25
+          step 22 = CNT Q4, step 23 = CNT Q5
+          step 24 = UADDLV Q20, step 25 = UADDLV Q21
+          step 26 = FMOV W12, step 27 = FMOV W13
+          step 28 = TBL Q16, step 29 = TBL Q17 *)
+     MAP_EVERY REABBREV_TAC
+      [`idx0 = read X12 s19`; `idx1 = read X13 s19`] THEN
+     MAP_EVERY ABBREV_TAC
+      [`tab0 = read(memory :> bytes128(word_add table
+                   (word(16 * val(idx0:int64))))) s19`;
+       `tab1 = read(memory :> bytes128(word_add table
+                   (word(16 * val(idx1:int64))))) s19`] THEN
+     (* Steps 20-27: LDR+CNT+UADDLV+FMOV (no TBL yet). *)
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (20--27) THEN
      RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_AND]) THEN
      RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
      RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
@@ -1062,8 +1079,66 @@ e (DBG "01 START" THEN
       [word_ugt; relational2; GT; WORD_AND_MASK]) THEN
      RULE_ASSUM_TAC(ONCE_REWRITE_RULE[COND_RAND]) THEN
      RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
-     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (26--29) THEN
+     (* Steps 28-29: TBL Q16, TBL Q17. *)
+     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (28--29) THEN
      DBG "10 after steps 1-29" THEN
+     (* Reference-style TBL correctness lemma: prove Q16 s29 / Q17 s29 content
+        from table content + nibbles identities, BEFORE ENSURES_FINAL_STATE_TAC
+        so that the state tracking for Q16/Q17 reads is still live. *)
+     SUBGOAL_THEN
+       `read Q16 s29 = word(num_of_wordlist
+                            (REJ_NIBBLES_ETA4
+                              [word_subword (loaded_d:int64) (0,8):byte;
+                               word_subword loaded_d (8,8);
+                               word_subword loaded_d (16,8);
+                               word_subword loaded_d (24,8)])) /\
+        read Q17 s29 = word(num_of_wordlist
+                            (REJ_NIBBLES_ETA4
+                              [word_subword (loaded_d:int64) (32,8):byte;
+                               word_subword loaded_d (40,8);
+                               word_subword loaded_d (48,8);
+                               word_subword loaded_d (56,8)]))`
+     MP_TAC THENL
+      [UNDISCH_TAC
+        `read(memory :> bytes(table,4096)) s29 =
+         num_of_wordlist mldsa_rej_uniform_eta_table` THEN
+       REPLICATE_TAC 4
+        (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV)
+              [GSYM NUM_OF_PAIR_WORDLIST]) THEN
+       REWRITE_TAC[mldsa_rej_uniform_eta_table; pair_wordlist] THEN
+       CONV_TAC WORD_REDUCE_CONV THEN
+       CONV_TAC(LAND_CONV BYTES_EQ_NUM_OF_WORDLIST_EXPAND_CONV) THEN
+       REWRITE_TAC[GSYM BYTES128_WBYTES] THEN REPEAT STRIP_TAC THEN
+       DISCARD_MATCHING_ASSUMPTIONS
+        [`read Q24 s = x`; `read Q25 s = x`] THEN
+       REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
+         (fun th -> is_var(rhs(concl th)) &&
+                    let n = fst(dest_var(rhs(concl th))) in
+                    n = "tab0" || n = "tab1"))) THEN
+       DISCARD_MATCHING_ASSUMPTIONS
+        [`read X12 s = x`; `read X13 s = x`] THEN
+       REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
+         (fun th -> is_var(rhs(concl th)) &&
+                    let n = fst(dest_var(rhs(concl th))) in
+                    n = "idx0" || n = "idx1"))) THEN
+       ASM_REWRITE_TAC[] THEN
+       DISCARD_MATCHING_ASSUMPTIONS
+        [`read Q16 s = x`; `read Q17 s = x`] THEN
+       ASM_REWRITE_TAC[FILTER] THEN
+       (* The 256-case brute-force WORD_BLAST closure goes here:
+            REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN
+            ASM_REWRITE_TAC[bitval] THEN
+            CONV_TAC WORD_REDUCE_CONV THEN
+            CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
+            CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+            ...
+            CONV_TAC WORD_BLAST
+         The 8 mask bits (`val nibbles_k < 9`) produce 256 cases.
+         Currently CHEATed; the above closure is the reference's pattern
+         at mldsa_rej_uniform.ml:1526-1538. *)
+       CHEAT_TAC;
+       STRIP_TAC] THEN
+     DBG "10a after TBL correctness subgoal" THEN
      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
      ASM_REWRITE_TAC[WORD_SUBWORD_AND] THEN
      CONV_TAC(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
@@ -1231,13 +1306,33 @@ e (DBG "01 START" THEN
          `word_subword (loaded_d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
        ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
        DISCH_THEN SUBST1_TAC THEN REFL_TAC;
-       (* Q16 / Q17: MATCH_MP_TAC TBL_ETA4_OUTPUT with correct nibbles witness *)
-       MATCH_MP_TAC TBL_ETA4_OUTPUT THEN
-       EXISTS_TAC `nibbles0:int128` THEN
-       REPEAT CONJ_TAC THEN FIRST_ASSUM ACCEPT_TAC;
-       MATCH_MP_TAC TBL_ETA4_OUTPUT THEN
-       EXISTS_TAC `nibbles1b:int128` THEN
-       REPEAT CONJ_TAC THEN FIRST_ASSUM ACCEPT_TAC];
+       (* Q16 / Q17: inline TBL correctness proof.
+          Reference template from mldsa_rej_uniform.ml:1500-1538. *)
+       (UNDISCH_TAC
+         `read(memory :> bytes(table,4096)) s29 =
+          num_of_wordlist mldsa_rej_uniform_eta_table` THEN
+        REPLICATE_TAC 4
+         (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV)
+               [GSYM NUM_OF_PAIR_WORDLIST]) THEN
+        REWRITE_TAC[mldsa_rej_uniform_eta_table; pair_wordlist] THEN
+        CONV_TAC WORD_REDUCE_CONV THEN
+        CONV_TAC(LAND_CONV BYTES_EQ_NUM_OF_WORDLIST_EXPAND_CONV) THEN
+        REWRITE_TAC[GSYM BYTES128_WBYTES] THEN REPEAT STRIP_TAC THEN
+        DISCARD_MATCHING_ASSUMPTIONS
+         [`read Q24 s = x`; `read Q25 s = x`] THEN
+        REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
+          (fun th -> is_var(rhs(concl th)) &&
+                     let n = fst(dest_var(rhs(concl th))) in
+                     n = "tab0" || n = "tab1"))) THEN
+        DISCARD_MATCHING_ASSUMPTIONS
+         [`read X12 s = x`; `read X13 s = x`] THEN
+        REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
+          (fun th -> is_var(rhs(concl th)) &&
+                     let n = fst(dest_var(rhs(concl th))) in
+                     n = "idx0" || n = "idx1"))) THEN
+        ASM_REWRITE_TAC[] THEN
+        DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_subst.txt" THEN
+        CHEAT_TAC)];
      DBG "14e after FIRST branches" THEN
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
