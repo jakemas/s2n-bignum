@@ -1723,8 +1723,13 @@ e (DBG "01 START" THEN
          DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[];
          ALL_TAC] THEN
        DBG "04n CASE_A after STACK_CONTENT_LARGE" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_sc.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: Case A goal now bytes(res,1024) = num_of_wordlist(MAP f (STACK_CONTENT niblist)) *)
+       (* Try the reference's LEXPAND approach to split bytes(res,1024) into
+          128 int64 chunks. *)
+       REWRITE_TAC[ARITH_RULE `1024 = 8 * 128`] THEN
+       CONV_TAC(ONCE_DEPTH_CONV BIGNUM_LEXPAND_CONV) THEN
+       DBG "04o CASE_A after LEXPAND" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_lexpand.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: BIGNUM_LEXPAND applied *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
