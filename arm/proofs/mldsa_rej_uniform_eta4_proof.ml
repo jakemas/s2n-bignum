@@ -794,6 +794,623 @@ let TBL_ETA4_OUTPUT = prove
                      (REJ_NIBBLES_ETA4 [b0;b1;b2;b3]))`,
   CHEAT_TAC);;
 
+(* Prefix lemma: REJ_SAMPLE_ETA4(SUB_LIST(0,k) l) is a prefix of
+   REJ_SAMPLE_ETA4 l (via APPEND decomposition of SUB_LIST). *)
+(* BYTES128_TO_WORDLIST: a single bytes128 read equals num_of_wordlist of 4 int32s.
+   Useful for converting per-16-byte chunk hyps into standard bytes form. *)
+let BYTES128_TO_WORDLIST = prove
+ (`!s:armstate a:int64 (ws:int32 list).
+    LENGTH ws = 4 /\
+    read (memory :> bytes128 a) s = word (num_of_wordlist ws)
+    ==>
+    read (memory :> bytes (a,16)) s = num_of_wordlist ws`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o AP_TERM `val:int128->num`) THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES128_WBYTES; VAL_READ_WBYTES;
+              DIMINDEX_128; ARITH_RULE `128 DIV 8 = 16`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[VAL_WORD; DIMINDEX_128] THEN
+  MATCH_MP_TAC MOD_LT THEN
+  MATCH_MP_TAC NUM_OF_WORDLIST_BOUND_GEN THEN
+  REWRITE_TAC[DIMINDEX_32] THEN
+  ASM_REWRITE_TAC[] THEN ARITH_TAC);;
+
+(* BYTES_APPEND_WORDLISTS: chain two adjacent bytes-equal-num_of_wordlist
+   facts into one covering the union. Direct wrapper around
+   BYTES_EQ_NUM_OF_WORDLIST_APPEND. *)
+let BYTES_APPEND_WORDLISTS = prove
+ (`!s:armstate a:int64 (l1:(N word)list) (l2:(N word)list) n1 n2.
+    dimindex(:N) * LENGTH l1 = 8 * n1 /\
+    read (memory :> bytes (a, n1)) s = num_of_wordlist l1 /\
+    read (memory :> bytes (word_add a (word n1), n2)) s = num_of_wordlist l2
+    ==>
+    read (memory :> bytes (a, n1 + n2)) s = num_of_wordlist (APPEND l1 l2)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `a:int64`; `s:armstate`; `l1:(N word)list`; `l2:(N word)list`;
+                 `n1:num`; `n2:num`] BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
+  ASM_REWRITE_TAC[]);;
+
+(* MEM_1024_TO_SUB_LIST_CASE_A/B/FINAL: bridges the raw memory equation
+   (for one of two cases) to the truncated form
+   `read(bytes(res, 4*MIN 256 outlen)) s = num_of_wordlist(SUB_LIST(0,256) outlist)`
+   needed at the writeback postcondition. *)
+let MEM_1024_TO_SUB_LIST_CASE_A = prove
+ (`!s:armstate res:int64 outlen:num (outlist:int32 list).
+    outlen <= 256 /\
+    LENGTH outlist = outlen /\
+    read (memory :> bytes (res, 4 * outlen)) s =
+    num_of_wordlist outlist
+    ==>
+    read (memory :> bytes (res,4 * MIN 256 outlen)) s =
+    num_of_wordlist (SUB_LIST (0,256) outlist)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `MIN 256 outlen = outlen` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `SUB_LIST(0,256) (outlist:int32 list) = outlist` SUBST1_TAC THENL
+   [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ASM_REWRITE_TAC[]);;
+
+let MEM_1024_TO_SUB_LIST_CASE_B = prove
+ (`!s:armstate res:int64 outlen:num (outlist:int32 list).
+    256 <= outlen /\
+    read (memory :> bytes (res,1024)) s =
+    num_of_wordlist (SUB_LIST (0,256) outlist:int32 list)
+    ==>
+    read (memory :> bytes (res,4 * MIN 256 outlen)) s =
+    num_of_wordlist (SUB_LIST (0,256) outlist)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `MIN 256 outlen = 256` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[ARITH_RULE `4 * 256 = 1024`]);;
+
+let MEM_1024_TO_SUB_LIST_FINAL = prove
+ (`!s:armstate res:int64 outlen:num (outlist:int32 list).
+    LENGTH outlist = outlen /\
+    (outlen <= 256 /\
+     read (memory :> bytes (res, 4 * outlen)) s =
+     num_of_wordlist outlist \/
+     256 <= outlen /\
+     read (memory :> bytes (res,1024)) s =
+     num_of_wordlist (SUB_LIST (0,256) outlist))
+    ==>
+    read (memory :> bytes (res,4 * MIN 256 outlen)) s =
+    num_of_wordlist (SUB_LIST (0,256) outlist)`,
+  REPEAT STRIP_TAC THENL
+   [MATCH_MP_TAC MEM_1024_TO_SUB_LIST_CASE_A THEN ASM_REWRITE_TAC[];
+    MATCH_MP_TAC MEM_1024_TO_SUB_LIST_CASE_B THEN ASM_REWRITE_TAC[]]);;
+
+(* SSHLL_CHUNK_FROM_INT128_LO/HI: per-chunk BITBLAST reductions matching the exact   *)
+(* form the ARM writeback emits. After ARM_STEPS, each bytes128 hyp at res+16j       *)
+(* has the form:                                                                     *)
+(*   word_join (word_join (word_shl (word_sx (word_subword (word_subword             *)
+(*     <packed-SUB-vector> (p,64)) (r,16))) 0) ...)                                  *)
+(* where <packed-SUB-vector> is an int128 built from `word_sub (word 4) ...` of      *)
+(* halfwords of `c = word_join b_{2k+1} b_{2k}`, and p = 0 (j even) or 64 (j odd).   *)
+(* These two identities collapse the full composite to a clean                        *)
+(*   word_join (word_join (word_sx(word_sub (word 4) (word_subword c (q,16)))) ...) *)
+(* form that matches num_of_wordlist of 4 int32s — directly usable with              *)
+(* BYTES128_TO_WORDLIST and BYTES_APPEND_WORDLISTS. *)
+
+let SSHLL_CHUNK_FROM_INT128_LO = BITBLAST_RULE
+ `word_join (word_join
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (0,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (0,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (0,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (0,64):int64) (0,16):int16):int32) 0):int64):int128 =
+  word_join
+   (word_join (word_sx(word_sub (word 4:int16) (word_subword c (48,16):int16)):int32)
+              (word_sx(word_sub (word 4:int16) (word_subword c (32,16):int16)):int32):int64)
+   (word_join (word_sx(word_sub (word 4:int16) (word_subword c (16,16):int16)):int32)
+              (word_sx(word_sub (word 4:int16) (word_subword c (0,16):int16)):int32):int64)
+   :int128`;;
+
+let SSHLL_CHUNK_FROM_INT128_HI = BITBLAST_RULE
+ `word_join (word_join
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (64,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (64,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (64,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+     (word_join (word_join
+       (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+      (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+       (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+     :int128) (64,64):int64) (0,16):int16):int32) 0):int64):int128 =
+  word_join
+   (word_join (word_sx(word_sub (word 4:int16) (word_subword c (112,16):int16)):int32)
+              (word_sx(word_sub (word 4:int16) (word_subword c (96,16):int16)):int32):int64)
+   (word_join (word_sx(word_sub (word 4:int16) (word_subword c (80,16):int16)):int32)
+              (word_sx(word_sub (word 4:int16) (word_subword c (64,16):int16)):int32):int64)
+   :int128`;;
+
+(* Zero-tail helpers for the writeback phase.                                       *)
+(* NUM_OF_WORDLIST_REPLICATE_0 / BYTES_APPEND_ZEROS: used to combine the live        *)
+(* "bytes(sp, 2*niblen) = num_of_wordlist niblist" with an implied zero-tail         *)
+(* "bytes(sp+2*niblen, 512-2*niblen) = 0" into a single 512-byte-stack statement:   *)
+(*   bytes(sp, 512) = num_of_wordlist(APPEND niblist (REPLICATE (256-niblen) 0)).    *)
+(* REPLICATE_ADD / SUB_LIST_APPEND_SHIFT: list-manipulation helpers.                  *)
+(* STACK_CONTENT / LENGTH_STACK_CONTENT / STACK_CONTENT_SMALL/_LARGE: the unified   *)
+(*   256-entry stack abstraction that handles both niblen<=256 and niblen>256 cases. *)
+(* This strengthened stack invariant will be needed to close the writeback CHEAT     *)
+(* by expressing all 64 int64 chunks b_0..b_63 as the 256-wordlist derived from      *)
+(* STACK_CONTENT niblist. *)
+
+let NUM_OF_WORDLIST_REPLICATE_0 = prove
+ (`!n:num. num_of_wordlist (REPLICATE n (word 0:N word)) = 0`,
+  INDUCT_TAC THEN ASM_REWRITE_TAC[REPLICATE; num_of_wordlist;
+    VAL_WORD_0; MULT_CLAUSES; ADD_CLAUSES]);;
+
+let BYTES_APPEND_ZEROS = prove
+ (`!(m:(S,(64)word->(8)word)component) (s:S)
+    (a:int64) (lis1:(N word)list) k1 k2 n2.
+    dimindex(:N) * LENGTH lis1 = 8 * k1 /\
+    read (m :> bytes (a, k1)) s = num_of_wordlist lis1 /\
+    read (m :> bytes (word_add a (word k1), k2)) s = 0
+    ==>
+    read (m :> bytes (a, k1 + k2)) s =
+    num_of_wordlist (APPEND lis1 (REPLICATE n2 (word 0:N word)))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`m:(S,(64)word->(8)word)component`;
+                 `a:int64`; `s:S`;
+                 `lis1:(N word)list`;
+                 `REPLICATE n2 (word 0:N word)`;
+                 `k1:num`; `k2:num`] BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
+  ASM_REWRITE_TAC[NUM_OF_WORDLIST_REPLICATE_0]);;
+
+let REPLICATE_ADD = prove
+ (`!m n (x:A). REPLICATE (m + n) x = APPEND (REPLICATE m x) (REPLICATE n x)`,
+  INDUCT_TAC THEN ASM_REWRITE_TAC[REPLICATE; ADD_CLAUSES; APPEND]);;
+
+let SUB_LIST_APPEND_SHIFT = prove
+ (`!(l1:A list) l2 m.
+     SUB_LIST(0, LENGTH l1 + m) (APPEND l1 l2) =
+     APPEND l1 (SUB_LIST(0, m) l2)`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[APPEND; LENGTH; ADD_CLAUSES; SUB_LIST_CLAUSES]);;
+
+let STACK_CONTENT = define
+ `STACK_CONTENT (niblist:int16 list) =
+    SUB_LIST(0, 256) (APPEND niblist (REPLICATE 256 (word 0:int16)))`;;
+
+let LENGTH_STACK_CONTENT = prove
+ (`!niblist:int16 list. LENGTH (STACK_CONTENT niblist) = 256`,
+  REWRITE_TAC[STACK_CONTENT; LENGTH_SUB_LIST; LENGTH_APPEND;
+              LENGTH_REPLICATE; SUB_0] THEN
+  REWRITE_TAC[ARITH_RULE `MIN 256 x = x <=> x <= 256`;
+              ARITH_RULE `MIN 256 x = 256 <=> 256 <= x`] THEN
+  ARITH_TAC);;
+
+let STACK_CONTENT_SMALL = prove
+ (`!niblist:int16 list.
+     LENGTH niblist <= 256
+     ==> STACK_CONTENT niblist =
+         APPEND niblist (REPLICATE (256 - LENGTH niblist) (word 0:int16))`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[STACK_CONTENT] THEN
+  MP_TAC(ISPECL [`niblist:int16 list`; `REPLICATE 256 (word 0:int16)`;
+                 `256 - LENGTH(niblist:int16 list)`] SUB_LIST_APPEND_SHIFT) THEN
+  SUBGOAL_THEN `LENGTH(niblist:int16 list) + 256 - LENGTH niblist = 256`
+    SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN AP_TERM_TAC THEN
+  ABBREV_TAC `pad:num = 256 - LENGTH(niblist:int16 list)` THEN
+  SUBGOAL_THEN `256 = pad + (256 - pad)` SUBST1_TAC THENL
+   [EXPAND_TAC "pad" THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[REPLICATE_ADD] THEN
+  MP_TAC(ISPECL [`REPLICATE pad (word 0:int16)`;
+                 `REPLICATE (256 - pad) (word 0:int16)`;
+                 `pad:num`] SUB_LIST_APPEND_LEFT) THEN
+  REWRITE_TAC[LENGTH_REPLICATE; LE_REFL] THEN DISCH_THEN SUBST1_TAC THEN
+  MATCH_MP_TAC SUB_LIST_REFL THEN REWRITE_TAC[LENGTH_REPLICATE; LE_REFL]);;
+
+let STACK_CONTENT_LARGE = prove
+ (`!niblist:int16 list.
+     256 <= LENGTH niblist
+     ==> STACK_CONTENT niblist = SUB_LIST(0, 256) niblist`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[STACK_CONTENT] THEN
+  MATCH_MP_TAC SUB_LIST_APPEND_LEFT THEN ASM_REWRITE_TAC[]);;
+
+(* WORD_NUM_OF_WORDLIST_PAD_ZEROS: the Q register value word(num_of_wordlist lis)  *)
+(* where LENGTH lis <= 8 has zero high bits, so equals                             *)
+(* word(num_of_wordlist (APPEND lis (REPLICATE (8 - LENGTH lis) 0))).              *)
+(* Used to convert the ARM loop body's Q16/Q17 store values into their             *)
+(* zero-padded 8-halfword form, matching the STACK_CONTENT update formula.         *)
+
+let WORD_NUM_OF_WORDLIST_PAD_ZEROS = prove
+ (`!lis0:int16 list.
+     LENGTH lis0 <= 8
+     ==> word(num_of_wordlist lis0):int128 =
+         word(num_of_wordlist (APPEND lis0
+              (REPLICATE (8 - LENGTH lis0) (word 0:int16))))`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[NUM_OF_WORDLIST_APPEND; NUM_OF_WORDLIST_REPLICATE_0] THEN
+  REWRITE_TAC[DIMINDEX_16; MULT_CLAUSES; ADD_CLAUSES]);;
+
+(* BYTES128_TO_WORDLIST_INT16: converts read(bytes128 a) s = word(num_of_wordlist ws) *)
+(* (where ws:int16 list of LENGTH 8) into the bytes/num_of_wordlist form.              *)
+
+let BYTES128_TO_WORDLIST_INT16 = prove
+ (`!s:armstate a:int64 (ws:int16 list).
+    LENGTH ws = 8 /\
+    read (memory :> bytes128 a) s = word (num_of_wordlist ws)
+    ==>
+    read (memory :> bytes (a,16)) s = num_of_wordlist ws`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o AP_TERM `val:int128->num`) THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES128_WBYTES; VAL_READ_WBYTES;
+              DIMINDEX_128; ARITH_RULE `128 DIV 8 = 16`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[VAL_WORD; DIMINDEX_128] THEN
+  MATCH_MP_TAC MOD_LT THEN
+  MATCH_MP_TAC NUM_OF_WORDLIST_BOUND_GEN THEN
+  REWRITE_TAC[DIMINDEX_16] THEN
+  ASM_REWRITE_TAC[] THEN ARITH_TAC);;
+
+(* BYTES_APPEND_BYTES128: combine a bytes region holding num_of_wordlist lis1     *)
+(* with an adjacent bytes128 holding word(num_of_wordlist lis2) where LENGTH lis2 = 8. *)
+(* Yields: read(bytes(a, k+16)) s = num_of_wordlist (APPEND lis1 lis2). *)
+
+let BYTES_APPEND_BYTES128 = prove
+ (`!(s:armstate) (a:int64) (lis1:int16 list) (lis2:int16 list) k.
+    2 * LENGTH lis1 = k /\
+    LENGTH lis2 = 8 /\
+    read (memory :> bytes (a, k)) s = num_of_wordlist lis1 /\
+    read (memory :> bytes128 (word_add a (word k))) s =
+    word (num_of_wordlist lis2)
+    ==>
+    read (memory :> bytes (a, k + 16)) s =
+    num_of_wordlist (APPEND lis1 lis2)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `a:int64`; `s:armstate`;
+                 `lis1:int16 list`; `lis2:int16 list`;
+                 `k:num`; `16:num`] BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[DIMINDEX_16] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC BYTES128_TO_WORDLIST_INT16 THEN ASM_REWRITE_TAC[]);;
+
+(* F_OF_ZERO, MAP_REPLICATE, MAP_F_REJ_NIBBLES, DERIVED_OUTPUT_SMALL/LARGE:       *)
+(* the final bridge family connecting the MAP of our SSHLL-semantic function f     *)
+(* (f x = word_sx(word_sub (word 4) x):int32) over STACK_CONTENT niblist to the   *)
+(* REJ_SAMPLE_ETA4 output, with zero-pad extension for the small-niblen case.      *)
+
+let F_OF_ZERO = BITBLAST_RULE
+ `word_sx(word_sub (word 4:int16) (word 0:int16)):int32 = word 4:int32`;;
+
+let MAP_REPLICATE = prove
+ (`!(f:A->B) n x. MAP f (REPLICATE n x) = REPLICATE n (f x)`,
+  GEN_TAC THEN INDUCT_TAC THEN ASM_REWRITE_TAC[REPLICATE; MAP]);;
+
+let DERIVED_OUTPUT_SMALL = prove
+ (`!(niblist:int16 list).
+     LENGTH niblist <= 256
+     ==> MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
+              (STACK_CONTENT niblist) =
+         APPEND (MAP (\x. word_sx(word_sub (word 4:int16) x):int32) niblist)
+                (REPLICATE (256 - LENGTH niblist) (word 4:int32))`,
+  REPEAT STRIP_TAC THEN
+  ASM_SIMP_TAC[STACK_CONTENT_SMALL; MAP_APPEND; MAP_REPLICATE] THEN
+  REWRITE_TAC[F_OF_ZERO]);;
+
+let DERIVED_OUTPUT_LARGE = prove
+ (`!(niblist:int16 list).
+     256 <= LENGTH niblist
+     ==> MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
+              (STACK_CONTENT niblist) =
+         SUB_LIST(0, 256)
+           (MAP (\x. word_sx(word_sub (word 4:int16) x):int32) niblist)`,
+  REPEAT STRIP_TAC THEN
+  ASM_SIMP_TAC[STACK_CONTENT_LARGE; GSYM SUB_LIST_MAP]);;
+
+let MAP_F_REJ_NIBBLES = prove
+ (`!l:byte list.
+     MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
+         (REJ_NIBBLES_ETA4 l) =
+     REJ_SAMPLE_ETA4 l`,
+  REWRITE_TAC[REJ_SAMPLE_ETA4]);;
+
+(* WORD_JOIN_4_INT32S_EQ_NUM_OF_WORDLIST: word_join ladder of 4 int32s is the     *)
+(* canonical word(num_of_wordlist [4 int32s]) form. *)
+
+let WORD_JOIN_4_INT32S_EQ_NUM_OF_WORDLIST = prove
+ (`!w0:int32. !w1:int32. !w2:int32. !w3:int32.
+     word_join
+      (word_join (w3:int32) (w2:int32):int64)
+      (word_join (w1:int32) (w0:int32):int64):int128 =
+     word (num_of_wordlist [w0; w1; w2; w3])`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_wordlist; DIMINDEX_32; MULT_CLAUSES; ADD_CLAUSES] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_128; VAL_WORD] THEN
+  MP_TAC(ISPEC `w0:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `w1:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `w2:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `w3:int32` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
+  SUBGOAL_THEN `(2 EXP 32 * val(w3:int32) + val(w2:int32)) MOD 2 EXP 64 =
+                2 EXP 32 * val w3 + val w2` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(2 EXP 32 * val(w1:int32) + val(w0:int32)) MOD 2 EXP 64 =
+                2 EXP 32 * val w1 + val w0` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
+
+(* MINI_WRITEBACK_CHUNK_LO: single-chunk end-to-end. Given read(bytes128 res) s =  *)
+(* (the complex ARM-emitted SSHLL+SUB composite), conclude                        *)
+(* read(bytes(res, 16)) s = num_of_wordlist [4 int32 SSHLL'd halfwords of c].     *)
+(* Uses SSHLL_CHUNK_FROM_INT128_LO + WORD_JOIN_4_INT32S_EQ + BYTES128_TO_WORDLIST.*)
+
+let MINI_WRITEBACK_CHUNK_LO = prove
+ (`!s:armstate. !res:int64. !c:int128.
+    read (memory :> bytes128 res) s =
+    word_join (word_join
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (48,16):int16):int32) 0)
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (32,16):int16):int32) 0):int64)
+     (word_join
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (16,16):int16):int32) 0)
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (0,16):int16):int32) 0):int64):int128
+    ==>
+    read (memory :> bytes (res, 16)) s =
+    num_of_wordlist
+      [word_sx(word_sub (word 4:int16) (word_subword c (0,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (16,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (32,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (48,16):int16)):int32]`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC BYTES128_TO_WORDLIST THEN
+  REWRITE_TAC[LENGTH] THEN CONJ_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[SSHLL_CHUNK_FROM_INT128_LO] THEN
+  REWRITE_TAC[WORD_JOIN_4_INT32S_EQ_NUM_OF_WORDLIST]);;
+
+(* MINI_WRITEBACK_CHUNK_HI: companion to _LO for (64,64)-extracting chunks. *)
+
+let MINI_WRITEBACK_CHUNK_HI = prove
+ (`!s:armstate. !res:int64. !c:int128.
+    read (memory :> bytes128 res) s =
+    word_join (word_join
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (48,16):int16):int32) 0)
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (32,16):int16):int32) 0):int64)
+     (word_join
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (16,16):int16):int32) 0)
+      (word_shl (word_sx (word_subword (word_subword (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (0,16):int16):int32) 0):int64):int128
+    ==>
+    read (memory :> bytes (res, 16)) s =
+    num_of_wordlist
+      [word_sx(word_sub (word 4:int16) (word_subword c (64,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (80,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (96,16):int16)):int32;
+       word_sx(word_sub (word 4:int16) (word_subword c (112,16):int16)):int32]`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC BYTES128_TO_WORDLIST THEN
+  REWRITE_TAC[LENGTH] THEN CONJ_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[SSHLL_CHUNK_FROM_INT128_HI] THEN
+  REWRITE_TAC[WORD_JOIN_4_INT32S_EQ_NUM_OF_WORDLIST]);;
+
+(* BYTES8_INT16S_TO_BYTES64: the reverse direction of BYTES128_TO_WORDLIST_INT16  *)
+(* at 64-bit width. Given bytes(a, 8) s = num_of_wordlist ws for a 4-int16 list,   *)
+(* conclude bytes64 a s = word(num_of_wordlist ws). Used to relate b_k (from       *)
+(* BIGNUM_LDIGITIZE) to int16 subsequences of STACK_CONTENT niblist. *)
+
+let BYTES8_INT16S_TO_BYTES64 = prove
+ (`!s:armstate (a:int64) (ws:int16 list).
+    LENGTH ws = 4 /\
+    read (memory :> bytes (a, 8)) s = num_of_wordlist ws
+    ==>
+    read (memory :> bytes64 a) s = word(num_of_wordlist ws)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `num_of_wordlist (ws:int16 list) < 2 EXP 64` ASSUME_TAC THENL
+   [MP_TAC(ISPECL [`ws:int16 list`; `64:num`] NUM_OF_WORDLIST_BOUND_GEN) THEN
+    REWRITE_TAC[DIMINDEX_16] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM VAL_EQ; READ_COMPONENT_COMPOSE; BYTES64_WBYTES;
+              VAL_READ_WBYTES; DIMINDEX_64; ARITH_RULE `64 DIV 8 = 8`;
+              VAL_WORD; DIMINDEX_64] THEN
+  REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC SYM_CONV THEN
+  MATCH_MP_TAC MOD_LT THEN ASM_REWRITE_TAC[]);;
+
+(* STACK_CONTENT_FROM_PARTS: combine live niblist on stack (bytes(sp, 2*LENGTH n))  *)
+(* with zero-tail (bytes(sp+2*LENGTH n, 512-2*LENGTH n) = 0) into a single          *)
+(* 512-byte stack statement as num_of_wordlist (STACK_CONTENT newlist).             *)
+
+let STACK_CONTENT_FROM_PARTS = prove
+ (`!s:armstate sp:int64 (newlist:int16 list).
+    LENGTH newlist <= 256 /\
+    read (memory :> bytes (sp, 2 * LENGTH newlist)) s =
+    num_of_wordlist newlist /\
+    read (memory :> bytes (word_add sp (word (2 * LENGTH newlist)),
+                           512 - 2 * LENGTH newlist)) s = 0
+    ==>
+    read (memory :> bytes (sp, 512)) s =
+    num_of_wordlist (STACK_CONTENT newlist)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPEC `newlist:int16 list` STACK_CONTENT_SMALL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `s:armstate`; `sp:int64`;
+                 `newlist:int16 list`;
+                 `2 * LENGTH(newlist:int16 list)`;
+                 `512 - 2 * LENGTH(newlist:int16 list)`;
+                 `256 - LENGTH(newlist:int16 list)`] BYTES_APPEND_ZEROS) THEN
+  REWRITE_TAC[DIMINDEX_16] THEN ANTS_TAC THENL
+   [ASM_REWRITE_TAC[] THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `2 * LENGTH(newlist:int16 list) + 512 - 2 * LENGTH newlist = 512`
+    SUBST1_TAC THENL
+   [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]);;
+
+let REJ_SAMPLE_ETA4_SUB_LIST_PREFIX = prove
+ (`!k (l:byte list).
+     k <= LENGTH l
+     ==> ?rest:int32 list.
+         APPEND (REJ_SAMPLE_ETA4 (SUB_LIST (0,k) l)) rest =
+         REJ_SAMPLE_ETA4 l`,
+  REPEAT STRIP_TAC THEN
+  EXISTS_TAC `REJ_SAMPLE_ETA4 (SUB_LIST(k, LENGTH l - k) l):int32 list` THEN
+  REWRITE_TAC[REJ_SAMPLE_ETA4; GSYM MAP_APPEND] THEN
+  AP_TERM_TAC THEN
+  REWRITE_TAC[REJ_NIBBLES_ETA4; GSYM FILTER_APPEND] THEN
+  AP_TERM_TAC THEN
+  REWRITE_TAC[GSYM NIBBLES_OF_BYTES_APPEND] THEN
+  AP_TERM_TAC THEN
+  MP_TAC(ISPECL [`l:byte list`; `k:num`] SUB_LIST_TOPSPLIT) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> GEN_REWRITE_TAC RAND_CONV [SYM th]) THEN
+  REFL_TAC);;
+
 let REJ_NIBBLES_ETA4_SPLIT_8 = prove
  (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
      REJ_NIBBLES_ETA4 [b0;b1;b2;b3;b4;b5;b6;b7] =
@@ -915,8 +1532,100 @@ e (DBG "01 START" THEN
    DBG "04d after ABBREV niblist" THEN
    ABBREV_TAC `niblen = LENGTH(niblist:int16 list)` THEN
    DBG "04e after ABBREV niblen" THEN
-   DUMP_STATE_TAC "/tmp/eta4/cheat1_state.txt" THEN
-   CHEAT_TAC] THEN  (* CHEAT: writeback memory content (was broken in original) *)
+   DISCH_THEN(fun th ->
+     MAP_EVERY ASSUME_TAC (CONJUNCTS th)) THEN
+   DBG "04f after DISCH chain" THEN
+   DUMP_STATE_TAC "/tmp/eta4/cheat1_after_disch.txt" THEN
+   SUBGOAL_THEN `val(word niblen:int64) = niblen` ASSUME_TAC THENL
+    [MATCH_MP_TAC VAL_WORD_EQ THEN REWRITE_TAC[DIMINDEX_64] THEN
+     UNDISCH_TAC `niblen < 272` THEN ARITH_TAC; ALL_TAC] THEN
+   DBG "04f1 after val(word niblen)" THEN
+   (* Digitize the stackpointer memory into 64 8-byte abbrevs (b_0..b_63 =
+      512 bytes) so that ARM_STEPS can step through the LDR Q16 reads. *)
+   BIGNUM_LDIGITIZE_TAC "b_"
+     `read (memory :> bytes(stackpointer,8 * 64)) s0` THEN
+   DBG "04f2 after LDIGITIZE" THEN
+   MEMORY_128_FROM_64_TAC "stackpointer" 0 32 THEN
+   DBG "04f3 after MEMORY_128_FROM_64" THEN
+   ASM_REWRITE_TAC[WORD_ADD_0] THEN STRIP_TAC THEN
+   DBG "04f4 after ASM_REWRITE+STRIP" THEN
+   (* Unroll the full writeback: preamble (4) + loop (15 * 16 = 240) + post (1 MOV X0).
+      The final RET is implicit (PC at pc+336). *)
+   ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA4_EXEC (1--245) THEN
+   DBG "04g after ARM 1-245 (full writeback)" THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   DBG "04h after ENSURES_FINAL" THEN
+   (* Bridge between post-WOP invariant and final output:
+      - niblist is a PREFIX of REJ_NIBBLES_ETA4 inlist;
+        equivalently, REJ_SAMPLE_ETA4(SUB_LIST(0,8*nn) inlist) is a prefix
+        of REJ_SAMPLE_ETA4 inlist.
+      - Then LENGTH(SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist)) = MIN 256 niblen.
+      Case analysis on (buflen < 8*(nn+1) \/ 256 <= niblen):
+        * niblen >= 256: first 256 of REJ_SAMPLE_ETA4 all come from niblist's
+          prefix-image → LENGTH = 256 = X0.
+        * buflen < 8*(nn+1) with 8 | buflen: then 8*nn = buflen, so
+          SUB_LIST(0,8*nn) inlist = inlist, niblist = REJ_NIBBLES_ETA4 inlist,
+          niblen = LENGTH(REJ_SAMPLE_ETA4 inlist), and MIN 256 niblen = niblen.
+          X0 = word niblen = word(MIN 256 niblen). *)
+   SUBGOAL_THEN
+     `LENGTH(SUB_LIST(0,256)(REJ_SAMPLE_ETA4 inlist):int32 list) =
+      MIN 256 niblen`
+   ASSUME_TAC THENL
+    [REWRITE_TAC[LENGTH_SUB_LIST; SUB_0] THEN
+     FIRST_X_ASSUM DISJ_CASES_TAC THENL
+      [(* Case A: buflen < 8*(nn+1). Together with 8 divides buflen,
+          forces either 8*nn = buflen (SUB_LIST = inlist) or 8*nn > buflen
+          (also SUB_LIST = inlist). Either way niblist = REJ_NIBBLES_ETA4 inlist. *)
+       SUBGOAL_THEN `SUB_LIST(0, 8 * nn) (inlist:byte list) = inlist`
+         SUBST_ALL_TAC THENL
+        [MATCH_MP_TAC SUB_LIST_REFL THEN
+         UNDISCH_TAC `8 divides buflen` THEN REWRITE_TAC[divides] THEN
+         DISCH_THEN(X_CHOOSE_THEN `k:num` SUBST_ALL_TAC) THEN
+         UNDISCH_TAC `LENGTH(inlist:byte list) = 8 * k` THEN
+         DISCH_THEN SUBST1_TAC THEN
+         REWRITE_TAC[LE_MULT_LCANCEL] THEN
+         UNDISCH_TAC `8 * k < 8 * (nn + 1)` THEN
+         REWRITE_TAC[LT_MULT_LCANCEL] THEN ARITH_TAC;
+         ALL_TAC] THEN
+       SUBGOAL_THEN `LENGTH(REJ_SAMPLE_ETA4 inlist:int32 list) = niblen`
+         SUBST1_TAC THENL
+        [REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN ASM_REWRITE_TAC[];
+         REFL_TAC];
+       (* Case B: 256 <= niblen. Split on 8*nn <= buflen? *)
+       ASM_CASES_TAC `8 * nn <= LENGTH(inlist:byte list)` THENL
+        [(* 8*nn <= buflen: prefix lemma gives APPEND niblist rest = REJ_SAMPLE *)
+         MP_TAC(ISPECL [`8 * nn`; `inlist:byte list`]
+                REJ_SAMPLE_ETA4_SUB_LIST_PREFIX) THEN
+         ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+         DISCH_THEN(X_CHOOSE_THEN `rest:int32 list` ASSUME_TAC) THEN
+         SUBGOAL_THEN
+           `LENGTH(REJ_SAMPLE_ETA4 inlist:int32 list) =
+            niblen + LENGTH(rest:int32 list)`
+          SUBST1_TAC THENL
+          [FIRST_X_ASSUM(fun th ->
+             GEN_REWRITE_TAC(LAND_CONV o ONCE_DEPTH_CONV)[SYM th]) THEN
+           REWRITE_TAC[LENGTH_APPEND; REJ_SAMPLE_ETA4; LENGTH_MAP] THEN
+           ASM_REWRITE_TAC[];
+           ALL_TAC] THEN
+         UNDISCH_TAC `256 <= niblen` THEN ARITH_TAC;
+         (* 8*nn > buflen: SUB_LIST clips *)
+         SUBGOAL_THEN `SUB_LIST(0, 8 * nn) (inlist:byte list) = inlist`
+           SUBST_ALL_TAC THENL
+          [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_ARITH_TAC;
+           ALL_TAC] THEN
+         SUBGOAL_THEN `LENGTH(REJ_SAMPLE_ETA4 inlist:int32 list) = niblen`
+           SUBST1_TAC THENL
+          [REWRITE_TAC[REJ_SAMPLE_ETA4; LENGTH_MAP] THEN ASM_REWRITE_TAC[];
+           REFL_TAC]]]; ALL_TAC] THEN
+   DBG "04i after length equation" THEN
+   ASM_REWRITE_TAC[] THEN
+   DBG "04j after ASM_REWRITE length equation" THEN
+   CONJ_TAC THENL
+    [(* Conjunct 1: word(MIN 256 niblen) = if niblen < 256 then word niblen else word 256 *)
+     COND_CASES_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC;
+     (* Conjunct 2: read memory s245 = num_of_wordlist SUB_LIST. *)
+     DUMP_STATE_TAC "/tmp/eta4/cheat1_state.txt" THEN
+     CHEAT_TAC]] THEN  (* CHEAT: writeback memory content *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
