@@ -1208,88 +1208,6 @@ let WORD_OF_NUM_4INT16 = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
   AP_THM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
 
-(* SUB_LIST_SPLIT_AT: split a list at position i using SUB_LIST. *)
-
-let SUB_LIST_SPLIT_AT = prove
- (`!(l:A list) i.
-     i <= LENGTH l
-     ==> l = APPEND (SUB_LIST(0, i) l) (SUB_LIST(i, LENGTH l - i) l)`,
-  REPEAT STRIP_TAC THEN
-  MP_TAC(ISPECL [`l:A list`; `i:num`] SUB_LIST_TOPSPLIT) THEN
-  ASM_REWRITE_TAC[] THEN DISCH_THEN(fun th -> GEN_REWRITE_TAC LAND_CONV [SYM th]) THEN
-  REFL_TAC);;
-
-(* BK_FROM_STACK: main chunk-to-stack bridge. Given the stack invariant
-   bytes(sp, 2*niblen) s = num_of_wordlist niblist and a chunk index k such
-   that the k-th 8-byte chunk is within the niblist region (4*(k+1) <= niblen),
-   the bytes64 read at sp+8*k equals word(num_of_wordlist [4 halfwords from
-   niblist starting at index 4*k]). *)
-
-let BK_FROM_STACK = prove
- (`!s:armstate. !sp:int64. !niblist:int16 list. !k:num.
-    4 * (k + 1) <= LENGTH niblist /\
-    read (memory :> bytes (sp, 2 * LENGTH niblist)) s = num_of_wordlist niblist
-    ==>
-    read (memory :> bytes64 (word_add sp (word (8 * k)))) s =
-    word(num_of_wordlist (SUB_LIST(4*k, 4) niblist))`,
-  REPEAT STRIP_TAC THEN
-  MATCH_MP_TAC BYTES8_INT16S_TO_BYTES64 THEN
-  REWRITE_TAC[LENGTH_SUB_LIST] THEN
-  CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
-  SUBGOAL_THEN
-    `read (memory :> bytes (sp, 2 * LENGTH(niblist:int16 list))) s =
-     num_of_wordlist (APPEND (SUB_LIST(0, 4 * k) niblist)
-                             (SUB_LIST(4 * k, LENGTH niblist - 4 * k) niblist))`
-  MP_TAC THENL
-   [MP_TAC(ISPECL [`niblist:int16 list`; `4 * k:num`] SUB_LIST_SPLIT_AT) THEN
-    ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
-    DISCH_THEN(fun th -> GEN_REWRITE_TAC
-      (RAND_CONV o RAND_CONV o ONCE_DEPTH_CONV) [SYM th]) THEN
-    ASM_REWRITE_TAC[];
-    ALL_TAC] THEN
-  SUBGOAL_THEN `2 * LENGTH(niblist:int16 list) = 8 * k + (2 * LENGTH niblist - 8 * k)`
-    (fun th -> GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
-   [ASM_ARITH_TAC; ALL_TAC] THEN
-  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
-                 `sp:int64`; `s:armstate`;
-                 `SUB_LIST(0, 4 * k) (niblist:int16 list)`;
-                 `SUB_LIST(4 * k, LENGTH(niblist:int16 list) - 4 * k) (niblist:int16 list)`;
-                 `8 * k:num`; `2 * LENGTH(niblist:int16 list) - 8 * k:num`]
-                BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
-  REWRITE_TAC[LENGTH_SUB_LIST; SUB_0; DIMINDEX_16] THEN
-  SUBGOAL_THEN `MIN (4 * k) (LENGTH(niblist:int16 list)) = 4 * k` SUBST1_TAC THENL
-   [ASM_ARITH_TAC; ALL_TAC] THEN
-  ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
-  DISCH_THEN(fun th -> DISCH_THEN(MP_TAC o (REWRITE_RULE[th]))) THEN
-  DISCH_THEN(MP_TAC o CONJUNCT2) THEN
-  SUBGOAL_THEN
-    `SUB_LIST(4 * k, LENGTH(niblist:int16 list) - 4 * k) niblist =
-     APPEND (SUB_LIST(4 * k, 4) niblist)
-            (SUB_LIST(4 * k + 4, LENGTH niblist - 4 * k - 4) niblist)`
-  (fun th -> GEN_REWRITE_TAC (LAND_CONV o RAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
-   [MP_TAC(ISPECL [`niblist:int16 list`; `4:num`; `LENGTH(niblist:int16 list) - 4 * k - 4`;
-                   `4 * k:num`] SUB_LIST_SPLIT) THEN
-    SUBGOAL_THEN `4 + LENGTH(niblist:int16 list) - 4 * k - 4 = LENGTH niblist - 4 * k`
-      SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
-    DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC;
-    ALL_TAC] THEN
-  SUBGOAL_THEN `2 * LENGTH(niblist:int16 list) - 8 * k = 8 + (2 * LENGTH niblist - 8 * k - 8)`
-    (fun th -> GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
-   [ASM_ARITH_TAC; ALL_TAC] THEN
-  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
-                 `word_add sp (word (8 * k)):int64`; `s:armstate`;
-                 `SUB_LIST(4 * k, 4) (niblist:int16 list)`;
-                 `SUB_LIST(4 * k + 4, LENGTH(niblist:int16 list) - 4 * k - 4) niblist`;
-                 `8:num`; `2 * LENGTH(niblist:int16 list) - 8 * k - 8:num`]
-                BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
-  REWRITE_TAC[LENGTH_SUB_LIST; DIMINDEX_16] THEN
-  SUBGOAL_THEN `MIN 4 (LENGTH(niblist:int16 list) - 4 * k) = 4` SUBST1_TAC THENL
-   [ASM_ARITH_TAC; ALL_TAC] THEN
-  ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
-  DISCH_THEN(fun th -> DISCH_THEN(MP_TAC o (REWRITE_RULE[th]))) THEN
-  DISCH_THEN(MP_TAC o CONJUNCT1) THEN
-  REWRITE_TAC[]);;
-
 (* WORD_SUBWORD_JOIN_NOW_H: extracts the halfwords from word_join b_1 (word(num_of_wordlist [...])). *)
 
 let WORD_SUBWORD_JOIN_NOW_H = prove
@@ -1300,6 +1218,28 @@ let WORD_SUBWORD_JOIN_NOW_H = prove
      word_subword (word_join b_1 (word(num_of_wordlist [h0;h1;h2;h3]):int64):int128) (48,16):int16 = h3`,
   REPEAT GEN_TAC THEN REWRITE_TAC[WORD_OF_NUM_4INT16] THEN
   CONV_TAC WORD_BLAST);;
+
+(* REJ_SAMPLE_ETA4_SUB_LIST_PREFIX: moved early for forward-reference by
+   SUB_LIST_256_PREFIX_LARGE. *)
+
+let REJ_SAMPLE_ETA4_SUB_LIST_PREFIX = prove
+ (`!k (l:byte list).
+     k <= LENGTH l
+     ==> ?rest:int32 list.
+         APPEND (REJ_SAMPLE_ETA4 (SUB_LIST (0,k) l)) rest =
+         REJ_SAMPLE_ETA4 l`,
+  REPEAT STRIP_TAC THEN
+  EXISTS_TAC `REJ_SAMPLE_ETA4 (SUB_LIST(k, LENGTH l - k) l):int32 list` THEN
+  REWRITE_TAC[REJ_SAMPLE_ETA4; GSYM MAP_APPEND] THEN
+  AP_TERM_TAC THEN
+  REWRITE_TAC[REJ_NIBBLES_ETA4; GSYM FILTER_APPEND] THEN
+  AP_TERM_TAC THEN
+  REWRITE_TAC[GSYM NIBBLES_OF_BYTES_APPEND] THEN
+  AP_TERM_TAC THEN
+  MP_TAC(ISPECL [`l:byte list`; `k:num`] SUB_LIST_TOPSPLIT) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> GEN_REWRITE_TAC RAND_CONV [SYM th]) THEN
+  REFL_TAC);;
 
 (* SUB_LIST_256_PREFIX_LARGE: when 256 <= niblen (= LENGTH of the processed
    REJ_NIBBLES_ETA4 prefix), SUB_LIST(0,256) of REJ_SAMPLE_ETA4 on the full
@@ -1522,6 +1462,88 @@ let BYTES8_INT16S_TO_BYTES64 = prove
   REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN
   ASM_REWRITE_TAC[] THEN CONV_TAC SYM_CONV THEN
   MATCH_MP_TAC MOD_LT THEN ASM_REWRITE_TAC[]);;
+
+(* SUB_LIST_SPLIT_AT: split a list at position i using SUB_LIST. *)
+
+let SUB_LIST_SPLIT_AT = prove
+ (`!(l:A list) i.
+     i <= LENGTH l
+     ==> l = APPEND (SUB_LIST(0, i) l) (SUB_LIST(i, LENGTH l - i) l)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`l:A list`; `i:num`] SUB_LIST_TOPSPLIT) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN(fun th -> GEN_REWRITE_TAC LAND_CONV [SYM th]) THEN
+  REFL_TAC);;
+
+(* BK_FROM_STACK: main chunk-to-stack bridge. Given the stack invariant
+   bytes(sp, 2*niblen) s = num_of_wordlist niblist and a chunk index k such
+   that the k-th 8-byte chunk is within the niblist region (4*(k+1) <= niblen),
+   the bytes64 read at sp+8*k equals word(num_of_wordlist [4 halfwords from
+   niblist starting at index 4*k]). *)
+
+let BK_FROM_STACK = prove
+ (`!s:armstate. !sp:int64. !niblist:int16 list. !k:num.
+    4 * (k + 1) <= LENGTH niblist /\
+    read (memory :> bytes (sp, 2 * LENGTH niblist)) s = num_of_wordlist niblist
+    ==>
+    read (memory :> bytes64 (word_add sp (word (8 * k)))) s =
+    word(num_of_wordlist (SUB_LIST(4*k, 4) niblist))`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC BYTES8_INT16S_TO_BYTES64 THEN
+  REWRITE_TAC[LENGTH_SUB_LIST] THEN
+  CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytes (sp, 2 * LENGTH(niblist:int16 list))) s =
+     num_of_wordlist (APPEND (SUB_LIST(0, 4 * k) niblist)
+                             (SUB_LIST(4 * k, LENGTH niblist - 4 * k) niblist))`
+  MP_TAC THENL
+   [MP_TAC(ISPECL [`niblist:int16 list`; `4 * k:num`] SUB_LIST_SPLIT_AT) THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    DISCH_THEN(fun th -> GEN_REWRITE_TAC
+      (RAND_CONV o RAND_CONV o ONCE_DEPTH_CONV) [SYM th]) THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `2 * LENGTH(niblist:int16 list) = 8 * k + (2 * LENGTH niblist - 8 * k)`
+    (fun th -> GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `sp:int64`; `s:armstate`;
+                 `SUB_LIST(0, 4 * k) (niblist:int16 list)`;
+                 `SUB_LIST(4 * k, LENGTH(niblist:int16 list) - 4 * k) (niblist:int16 list)`;
+                 `8 * k:num`; `2 * LENGTH(niblist:int16 list) - 8 * k:num`]
+                BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
+  REWRITE_TAC[LENGTH_SUB_LIST; SUB_0; DIMINDEX_16] THEN
+  SUBGOAL_THEN `MIN (4 * k) (LENGTH(niblist:int16 list)) = 4 * k` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(fun th -> DISCH_THEN(MP_TAC o (REWRITE_RULE[th]))) THEN
+  DISCH_THEN(MP_TAC o CONJUNCT2) THEN
+  SUBGOAL_THEN
+    `SUB_LIST(4 * k, LENGTH(niblist:int16 list) - 4 * k) niblist =
+     APPEND (SUB_LIST(4 * k, 4) niblist)
+            (SUB_LIST(4 * k + 4, LENGTH niblist - 4 * k - 4) niblist)`
+  (fun th -> GEN_REWRITE_TAC (LAND_CONV o RAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+   [MP_TAC(ISPECL [`niblist:int16 list`; `4:num`; `LENGTH(niblist:int16 list) - 4 * k - 4`;
+                   `4 * k:num`] SUB_LIST_SPLIT) THEN
+    SUBGOAL_THEN `4 + LENGTH(niblist:int16 list) - 4 * k - 4 = LENGTH niblist - 4 * k`
+      SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN `2 * LENGTH(niblist:int16 list) - 8 * k = 8 + (2 * LENGTH niblist - 8 * k - 8)`
+    (fun th -> GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `word_add sp (word (8 * k)):int64`; `s:armstate`;
+                 `SUB_LIST(4 * k, 4) (niblist:int16 list)`;
+                 `SUB_LIST(4 * k + 4, LENGTH(niblist:int16 list) - 4 * k - 4) niblist`;
+                 `8:num`; `2 * LENGTH(niblist:int16 list) - 8 * k - 8:num`]
+                BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
+  REWRITE_TAC[LENGTH_SUB_LIST; DIMINDEX_16] THEN
+  SUBGOAL_THEN `MIN 4 (LENGTH(niblist:int16 list) - 4 * k) = 4` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(fun th -> DISCH_THEN(MP_TAC o (REWRITE_RULE[th]))) THEN
+  DISCH_THEN(MP_TAC o CONJUNCT1) THEN
+  REWRITE_TAC[]);;
 
 (* STACK_CONTENT_FROM_PARTS: combine live niblist on stack (bytes(sp, 2*LENGTH n))  *)
 (* with zero-tail (bytes(sp+2*LENGTH n, 512-2*LENGTH n) = 0) into a single          *)
