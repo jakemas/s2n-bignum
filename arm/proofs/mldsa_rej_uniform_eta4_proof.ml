@@ -1545,6 +1545,20 @@ let BK_FROM_STACK = prove
   DISCH_THEN(MP_TAC o CONJUNCT1) THEN
   REWRITE_TAC[]);;
 
+(* BK_FROM_STACK_GE256: convenience wrapper for Case A. Requires k < 64 and
+   256 <= LENGTH niblist (directly matching Case A hyps). *)
+
+let BK_FROM_STACK_GE256 = prove
+ (`!s:armstate. !sp:int64. !niblist:int16 list. !k:num.
+    k < 64 /\ 256 <= LENGTH niblist /\
+    read (memory :> bytes (sp, 2 * LENGTH niblist)) s = num_of_wordlist niblist
+    ==>
+    read (memory :> bytes64 (word_add sp (word (8 * k)))) s =
+    word(num_of_wordlist (SUB_LIST(4*k, 4) niblist))`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC BK_FROM_STACK THEN ASM_REWRITE_TAC[] THEN
+  ASM_ARITH_TAC);;
+
 (* STACK_CONTENT_FROM_PARTS: combine live niblist on stack (bytes(sp, 2*LENGTH n))  *)
 (* with zero-tail (bytes(sp+2*LENGTH n, 512-2*LENGTH n) = 0) into a single          *)
 (* 512-byte stack statement as num_of_wordlist (STACK_CONTENT newlist).             *)
@@ -1869,14 +1883,18 @@ e (DBG "01 START" THEN
        (* Split each bytes128 hyp into two bytes64 hyps via READ_MEMORY_SPLIT_CONV. *)
        RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1))) THEN
        DBG "04p CASE_A after SPLIT bytes128->bytes64" THEN
+       (* Introduce a universal per-k b_k = word(...) fact. We specify:
+          - MP_TAC with SPECL fills in sp, niblist, s245;
+          - k is left universally quantified;
+          - the premise k < 64 /\ 256 <= LENGTH niblist /\ bytes(...)=... is
+            discharged by ASM_REWRITE_TAC (the relevant facts are hyps). *)
+       MP_TAC(GEN `k:num` (ISPECL [`s245:armstate`; `stackpointer:int64`;
+                                    `niblist:int16 list`; `k:num`]
+                                   BK_FROM_STACK_GE256)) THEN
        ASM_REWRITE_TAC[] THEN
-       DBG "04q CASE_A after ASM_REWRITE" THEN
-       (* Case A CHEAT: final bridge showing the 128-int64 SSHLL expression
-          on LHS equals num_of_wordlist (MAP f (STACK_CONTENT niblist)) on RHS.
-          This requires connecting b_0..b_63 to halfwords of niblist via the
-          stack invariant bytes(sp, 2*niblen) = num_of_wordlist niblist. *)
-       DUMP_STATE_TAC "/tmp/eta4/case_a_final.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: final bridge CHEAT *)
+       DBG "04q CASE_A after BK_GE256 MP_TAC" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_bkge.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP: BK_FROM_STACK_GE256 premise introduced *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
