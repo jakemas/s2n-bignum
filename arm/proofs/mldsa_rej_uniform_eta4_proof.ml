@@ -2183,6 +2183,53 @@ let REJ_NIBBLES_ETA4_SPLIT_8 = prove
      [b0;b1;b2;b3;b4;b5;b6;b7]`))) THEN
   REWRITE_TAC[REJ_NIBBLES_ETA4_APPEND]);;
 
+(* CASE_B_TRUNCATE: given the FULL 1024-byte memory identity
+     read bytes(res, 1024) s = num_of_wordlist(MAP f (STACK_CONTENT niblist))
+   and niblen <= 256, derive the truncated identity
+     read bytes(res, 4*niblen) s = num_of_wordlist(MAP f niblist).
+   Proof: take MOD 2^(8*4*niblen) of both sides.
+   LHS: read bytes(res, 1024) s MOD 2^(8*4*niblen) = read bytes(res, MIN 1024 (4*niblen)) s
+        = read bytes(res, 4*niblen) s (since 4*niblen <= 1024).
+   RHS: num_of_wordlist L :int32 MOD 2^(32*niblen) = num_of_wordlist(SUB_LIST(0,niblen) L).
+   Then SUB_LIST(0, niblen)(MAP f (STACK_CONTENT niblist)) = MAP f niblist via
+   SUB_LIST_MAP + SUB_LIST_MIN + SUB_LIST_APPEND_LEFT + SUB_LIST_REFL. *)
+
+let CASE_B_TRUNCATE = prove
+ (`!res:int64 niblen:num niblist:int16 list s:armstate.
+    niblen <= 256 /\
+    LENGTH niblist = niblen /\
+    read (memory :> bytes (res, 1024)) s =
+    num_of_wordlist (MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32)
+                         (STACK_CONTENT niblist))
+    ==>
+    read (memory :> bytes (res, 4 * niblen)) s =
+    num_of_wordlist (MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) niblist)`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o AP_TERM `(\n:num. n MOD 2 EXP (8 * (4 * niblen)))`) THEN
+  CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_MOD] THEN
+  SUBGOAL_THEN `MIN 1024 (4 * niblen) = 4 * niblen` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `8 * 4 * niblen = dimindex(:32) * niblen` SUBST1_TAC THENL
+   [REWRITE_TAC[DIMINDEX_32] THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM NUM_OF_WORDLIST_SUB_LIST_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, niblen)
+       (MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) (STACK_CONTENT niblist)) =
+     MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) niblist`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[GSYM SUB_LIST_MAP; STACK_CONTENT; SUB_LIST_MIN] THEN
+    SUBGOAL_THEN `MIN niblen 256 = niblen` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    AP_TERM_TAC THEN
+    MP_TAC(ISPECL [`niblist:int16 list`;
+                   `REPLICATE 256 (word 0:int16)`;
+                   `niblen:num`] SUB_LIST_APPEND_LEFT) THEN
+    REWRITE_TAC[LE_REFL] THEN ASM_REWRITE_TAC[] THEN
+    DISCH_THEN SUBST1_TAC THEN
+    MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[];
+    REWRITE_TAC[]]);;
+
 (* ========================================================================= *)
 (* The proof (interactive g/e style).                                        *)
 (* Run each e(...) in sequence in a HOL Light session with the checkpoint.   *)
