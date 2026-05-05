@@ -2340,11 +2340,14 @@ e (DBG "01 START" THEN
            let prem_term = lhand(concl inst) in
            let prem_thm = ARITH_RULE(mk_imp(
              `256 <= LENGTH (niblist:int16 list)`, prem_term)) in
-           let discharged = MATCH_MP inst
+           let raw = MATCH_MP inst
              (MP prem_thm (ASSUME `256 <= LENGTH (niblist:int16 list)`)) in
+           let discharged = CONV_RULE
+             (REWRITE_CONV[ARITH]) raw in
            REWRITE_TAC[discharged])
            (List.map (fun k -> 8 * k) (0--31))) THEN
        DBG "04t2 CASE_A after halfword->EL reduction" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_04t2.txt" THEN
        (* Flatten LHS bignum_of_wordlist of word_joins to num_of_wordlist of
           int32s via BIGNUM_CONS_WORDJOIN. Also handle base case (empty list). *)
        REWRITE_TAC[BIGNUM_CONS_WORDJOIN; bignum_of_wordlist;
