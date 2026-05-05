@@ -1873,6 +1873,18 @@ let BIGNUM_CONS_WORDJOIN = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
 
+(* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
+   where a, b are int32. No MOD needed because the sum is already < 2^64. *)
+
+let VAL_WORD_JOIN_INT32_INT64 = prove
+ (`!a:int32. !b:int32.
+     val (word_join (a:int32) (b:int32):int64) = 2 EXP 32 * val a + val b`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_32] THEN
+  MP_TAC(ISPEC `a:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b:int32` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
+  MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
+
 (* BIGNUM_WORDJOIN_APPEND: inductive step — given tail equals num_of_wordlist form,
    CONS of word_join equals APPEND of 2-element prefix. *)
 
@@ -2348,13 +2360,16 @@ e (DBG "01 START" THEN
            (List.map (fun k -> 8 * k) (0--31))) THEN
        DBG "04t2 CASE_A after halfword->EL reduction" THEN
        DUMP_STATE_TAC "/tmp/eta4/case_a_after_04t2.txt" THEN
-       (* Flatten LHS bignum_of_wordlist of word_joins to num_of_wordlist of
-          int32s via BIGNUM_CONS_WORDJOIN. Also handle base case (empty list). *)
-       REWRITE_TAC[BIGNUM_CONS_WORDJOIN; bignum_of_wordlist;
-                   num_of_wordlist; DIMINDEX_32;
-                   MULT_CLAUSES; ADD_CLAUSES] THEN
-       DBG "04u CASE_A after flatten LHS to val-based form" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_flattened.txt" THEN
+       (* Unfold STACK_CONTENT on RHS: in Case A, it's SUB_LIST(0,256) niblist. *)
+       SUBGOAL_THEN `STACK_CONTENT (niblist:int16 list) = SUB_LIST(0, 256) niblist`
+         SUBST1_TAC THENL
+        [MATCH_MP_TAC STACK_CONTENT_LARGE THEN ASM_REWRITE_TAC[];
+         ALL_TAC] THEN
+       DBG "04u1 CASE_A after STACK_CONTENT→SUB_LIST" THEN
+       (* Pair-up LHS via 127 applications of BIGNUM_WORDJOIN_APPEND. Each *)
+       (* application consumes one int64 word_join and produces a 2-element *)
+       (* APPEND on the RHS num_of_wordlist list.                          *)
+       DUMP_STATE_TAC "/tmp/eta4/case_a_pre_closure.txt" THEN
        CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
