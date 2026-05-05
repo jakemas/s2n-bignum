@@ -2325,14 +2325,25 @@ e (DBG "01 START" THEN
        DBG "04t CASE_A after chunk word_subword collapse (all 4 variants)" THEN
        (* Apply WORD_SUBWORD_JOIN_SUB_LIST_H for a in {0,8,16,...,248} to    *)
        (* reduce each chunk's 8 word_subword(word_join ...) halfword reads   *)
-       (* to EL (a+k) niblist. *)
+       (* to EL (a+k) niblist. Premise (a+8 <= LENGTH niblist) derives from *)
+       (* 256 <= niblen /\ LENGTH niblist = niblen.                         *)
+       SUBGOAL_THEN `256 <= LENGTH (niblist:int16 list)` ASSUME_TAC THENL
+        [UNDISCH_TAC `LENGTH(niblist:int16 list) = niblen` THEN
+         DISCH_THEN SUBST1_TAC THEN
+         UNDISCH_TAC `256 <= niblen` THEN REWRITE_TAC[];
+         ALL_TAC] THEN
        MP_TAC(GEN `a:num` (ISPECL [`niblist:int16 list`; `a:num`]
                                   WORD_SUBWORD_JOIN_SUB_LIST_H)) THEN
        DISCH_THEN(fun univ_th ->
          MAP_EVERY (fun i ->
            let inst = SPEC (mk_small_numeral i) univ_th in
-           let premise = EQT_ELIM (NUM_LE_CONV (lhand(concl inst))) in
-           REWRITE_TAC[MP inst premise]) (List.map (fun k -> 8 * k) (0--31))) THEN
+           let prem_term = lhand(concl inst) in
+           let prem_thm = ARITH_RULE(mk_imp(
+             `256 <= LENGTH (niblist:int16 list)`, prem_term)) in
+           let discharged = MATCH_MP inst
+             (MP prem_thm (ASSUME `256 <= LENGTH (niblist:int16 list)`)) in
+           REWRITE_TAC[discharged])
+           (List.map (fun k -> 8 * k) (0--31))) THEN
        DBG "04t2 CASE_A after halfword->EL reduction" THEN
        (* Flatten LHS bignum_of_wordlist of word_joins to num_of_wordlist of
           int32s via BIGNUM_CONS_WORDJOIN. Also handle base case (empty list). *)
