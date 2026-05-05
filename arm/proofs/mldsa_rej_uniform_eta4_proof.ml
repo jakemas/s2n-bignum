@@ -1873,6 +1873,19 @@ let BIGNUM_CONS_WORDJOIN = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
 
+(* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
+   where a, b are int32. No MOD needed because the sum is already < 2^64.
+   Used by BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST below, so must come first. *)
+
+let VAL_WORD_JOIN_INT32_INT64 = prove
+ (`!a:int32. !b:int32.
+     val (word_join (a:int32) (b:int32):int64) = 2 EXP 32 * val a + val b`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_32] THEN
+  MP_TAC(ISPEC `a:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b:int32` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
+  MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
+
 (* BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST: full scaling lemma. For any n and any
    int16 list niblist with 2*n <= LENGTH niblist, the bignum_of_wordlist of
    the list_of_seq of int64 word_join pairs equals the num_of_wordlist of
@@ -1935,18 +1948,6 @@ let BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST = prove
                 ADD_CLAUSES] THEN ARITH_TAC]);;
 
 Printf.printf "BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST proved\n%!";;
-
-(* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
-   where a, b are int32. No MOD needed because the sum is already < 2^64. *)
-
-let VAL_WORD_JOIN_INT32_INT64 = prove
- (`!a:int32. !b:int32.
-     val (word_join (a:int32) (b:int32):int64) = 2 EXP 32 * val a + val b`,
-  REPEAT GEN_TAC THEN REWRITE_TAC[VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_32] THEN
-  MP_TAC(ISPEC `a:int32` VAL_BOUND) THEN
-  MP_TAC(ISPEC `b:int32` VAL_BOUND) THEN
-  REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
-  MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
 
 (* SUB_LIST_EQ_LIST_OF_SEQ: SUB_LIST(0, n) l = list_of_seq (EL . l) n whenever
    n <= LENGTH l. Together with LIST_OF_SEQ_CONV this unfolds a prefix SUB_LIST
@@ -2221,13 +2222,16 @@ let CASE_B_TRUNCATE = prove
    [REWRITE_TAC[GSYM SUB_LIST_MAP; STACK_CONTENT; SUB_LIST_MIN] THEN
     SUBGOAL_THEN `MIN niblen 256 = niblen` SUBST1_TAC THENL
      [ASM_ARITH_TAC; ALL_TAC] THEN
-    AP_TERM_TAC THEN
-    MP_TAC(ISPECL [`niblist:int16 list`;
-                   `REPLICATE 256 (word 0:int16)`;
+    REWRITE_TAC[MAP_APPEND] THEN
+    MP_TAC(ISPECL [`MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) niblist`;
+                   `MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32)
+                        (REPLICATE 256 (word 0:int16))`;
                    `niblen:num`] SUB_LIST_APPEND_LEFT) THEN
-    REWRITE_TAC[LE_REFL] THEN ASM_REWRITE_TAC[] THEN
+    ANTS_TAC THENL
+     [REWRITE_TAC[LENGTH_MAP] THEN ASM_REWRITE_TAC[LE_REFL]; ALL_TAC] THEN
     DISCH_THEN SUBST1_TAC THEN
-    MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[];
+    MATCH_MP_TAC SUB_LIST_REFL THEN
+    REWRITE_TAC[LENGTH_MAP] THEN ASM_REWRITE_TAC[LE_REFL];
     REWRITE_TAC[]]);;
 
 (* ========================================================================= *)
