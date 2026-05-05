@@ -1873,11 +1873,68 @@ let BIGNUM_CONS_WORDJOIN = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
 
-(* PAIR_MAP_IDX: scaling template — equality between bignum_of_wordlist of
-   int64-pair-MAP-indexed form and num_of_wordlist of MAP f (SUB_LIST(0,2m) l).
-   Verified interactively for m=4 (n=4 index list [0;1;2;3]). Template scales
-   mechanically to m=128 with idx list [0;1;...;127]; see project memory for
-   complete tactic. Full 128-scale integration TBD. *)
+(* BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST: full scaling lemma. For any n and any
+   int16 list niblist with 2*n <= LENGTH niblist, the bignum_of_wordlist of
+   the list_of_seq of int64 word_join pairs equals the num_of_wordlist of
+   MAP f (SUB_LIST(0, 2*n) niblist), where f = \x. word_sx(word_sub (word 4) x).
+   Proved by induction on n. *)
+
+let BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST = prove
+ (`!niblist:int16 list. !n:num.
+     2 * n <= LENGTH niblist
+     ==>
+     bignum_of_wordlist
+       (list_of_seq (\i:num. word_join
+           (word_sx (word_sub (word 4:int16) (EL (2*i+1) niblist)):int32)
+           (word_sx (word_sub (word 4:int16) (EL (2*i) niblist)):int32):int64) n) =
+     num_of_wordlist
+       (MAP (\x. word_sx (word_sub (word 4:int16) x):int32)
+            (SUB_LIST(0, 2*n) niblist))`,
+  GEN_TAC THEN INDUCT_TAC THENL
+   [REWRITE_TAC[MULT_CLAUSES; list_of_seq; bignum_of_wordlist;
+                SUB_LIST_CLAUSES; MAP; num_of_wordlist];
+    ALL_TAC] THEN
+  DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o check (is_imp o concl)) THEN
+  ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_TAC] THEN
+  REWRITE_TAC[list_of_seq;
+              BIGNUM_OF_WORDLIST_APPEND; LENGTH_LIST_OF_SEQ;
+              bignum_of_wordlist; MULT_CLAUSES; ADD_CLAUSES] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[VAL_WORD_JOIN_INT32_INT64] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 2 + 2 * n) (niblist:int16 list) =
+     APPEND (SUB_LIST(0, 2 * n) niblist) (SUB_LIST(2 * n, 2) niblist)`
+    SUBST1_TAC THENL
+   [MP_TAC(ISPECL [`niblist:int16 list`; `2*n:num`; `2`; `0`] SUB_LIST_SPLIT) THEN
+    REWRITE_TAC[ADD_CLAUSES; ARITH_RULE `2 * n + 2 = 2 + 2 * n`] THEN
+    DISCH_THEN SUBST1_TAC THEN REFL_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[MAP_APPEND; NUM_OF_WORDLIST_APPEND; DIMINDEX_32;
+              LENGTH_MAP; LENGTH_SUB_LIST] THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `MIN (2 * n) (LENGTH(niblist:int16 list) - 0) = 2 * n`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[SUB_0] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  AP_TERM_TAC THEN
+  REWRITE_TAC[ARITH_RULE `64 * n = 32 * 2 * n`] THEN
+  AP_TERM_TAC THEN
+  SUBGOAL_THEN `SUB_LIST(2 * n, 2) (niblist:int16 list) =
+                [EL (2*n) niblist; EL (2*n+1) niblist]` SUBST1_TAC THENL
+   [REWRITE_TAC[LIST_EQ; LENGTH_SUB_LIST; LENGTH] THEN
+    CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    X_GEN_TAC `i:num` THEN REWRITE_TAC[ARITH_RULE `SUC(SUC 0) = 2`] THEN
+    DISCH_TAC THEN
+    MP_TAC(ISPECL [`niblist:int16 list`; `2*n:num`; `2`; `i:num`]
+                  EL_SUB_LIST) THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC] THEN
+    SUBGOAL_THEN `i = 0 \/ i = 1` MP_TAC THENL
+     [ASM_ARITH_TAC;
+      STRIP_TAC THEN ASM_REWRITE_TAC[EL; HD; TL; ADD_CLAUSES; num_CONV `1`]];
+    REWRITE_TAC[MAP; num_of_wordlist; DIMINDEX_32; MULT_CLAUSES;
+                ADD_CLAUSES] THEN ARITH_TAC]);;
+
+Printf.printf "BIGNUM_LIST_OF_SEQ_EQ_NUM_SUB_LIST proved\n%!";;
 
 (* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
    where a, b are int32. No MOD needed because the sum is already < 2^64. *)
@@ -2345,7 +2402,19 @@ e (DBG "01 START" THEN
         [MATCH_MP_TAC SUB_LIST_8nn_INLIST THEN EXISTS_TAC `buflen:num` THEN
          ASM_REWRITE_TAC[];
          ALL_TAC] THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_b.txt" THEN
+       (* REJ_SAMPLE_ETA4 inlist = MAP f niblist. *)
+       SUBGOAL_THEN
+        `REJ_SAMPLE_ETA4 (inlist:byte list) =
+         MAP (\x. word_sx(word_sub (word 4:int16) x):int32) niblist`
+       ASSUME_TAC THENL
+        [REWRITE_TAC[REJ_SAMPLE_ETA4] THEN AP_TERM_TAC THEN
+         UNDISCH_TAC
+           `REJ_NIBBLES_ETA4 (SUB_LIST(0,8 * nn) (inlist:byte list)) =
+            (niblist:int16 list)` THEN
+         ASM_REWRITE_TAC[];
+         ALL_TAC] THEN
+       DBG "04k1 CASE_B after REJ_SAMPLE=MAP" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_b_04k1.txt" THEN
        CHEAT_TAC;
        (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
           prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
@@ -2471,7 +2540,7 @@ e (DBG "01 START" THEN
         [MATCH_MP_TAC STACK_CONTENT_LARGE THEN ASM_REWRITE_TAC[];
          ALL_TAC] THEN
        DBG "04u1 CASE_A after STACK_CONTENT→SUB_LIST" THEN
-       (* Close Case A using the scaled pair-form identity PAIR_MAP_IDX_128.
+       (* Close Case A using PAIR_MAP_IDX_128: the scaled pair-form identity.
           The goal here is exactly of the form
             bignum_of_wordlist [word_join ...; ...(128 entries)...] =
             num_of_wordlist (MAP f (SUB_LIST (0,256) niblist))
@@ -2800,7 +2869,8 @@ e (DBG "01 START" THEN
         and the nested word_join version only causes ASM_REWRITE_TAC to rewrite
         the goal into an un-closable shape. *)
      DISCARD_MATCHING_ASSUMPTIONS
-      [`read Q16 s = word_join x y`; `read Q17 s = word_join x y`] THEN
+      [`read Q16 s = word_join (x:int64) (y:int64):int128`;
+       `read Q17 s = word_join (x:int64) (y:int64):int128`] THEN
      DBG "10a2 after DISCARD arm Q16/Q17 word_join" THEN
      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
      ASM_REWRITE_TAC[WORD_SUBWORD_AND] THEN
