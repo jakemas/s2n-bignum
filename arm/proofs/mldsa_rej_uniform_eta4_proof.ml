@@ -2212,7 +2212,13 @@ e (DBG "01 START" THEN
                    SSHLL_CHUNK_WORD_SUBWORD_LO_INT64_HIINNER;
                    SSHLL_CHUNK_WORD_SUBWORD_HI_INT64_HIINNER] THEN
        DBG "04t CASE_A after chunk word_subword collapse (all 4 variants)" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_chunk_collapsed_v2.txt" THEN
+       (* Flatten LHS bignum_of_wordlist of word_joins to num_of_wordlist of
+          int32s via BIGNUM_CONS_WORDJOIN. Also handle base case (empty list). *)
+       REWRITE_TAC[BIGNUM_CONS_WORDJOIN; bignum_of_wordlist;
+                   num_of_wordlist; DIMINDEX_32;
+                   MULT_CLAUSES; ADD_CLAUSES] THEN
+       DBG "04u CASE_A after flatten LHS to val-based form" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_flattened.txt" THEN
        CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
