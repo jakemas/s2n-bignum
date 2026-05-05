@@ -2348,7 +2348,19 @@ e (DBG "01 START" THEN
         [MATCH_MP_TAC SUB_LIST_8nn_INLIST THEN EXISTS_TAC `buflen:num` THEN
          ASM_REWRITE_TAC[];
          ALL_TAC] THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_b.txt" THEN
+       (* REJ_SAMPLE_ETA4 inlist = MAP f niblist. *)
+       SUBGOAL_THEN
+        `REJ_SAMPLE_ETA4 (inlist:byte list) =
+         MAP (\x. word_sx(word_sub (word 4:int16) x):int32) niblist`
+       ASSUME_TAC THENL
+        [REWRITE_TAC[REJ_SAMPLE_ETA4] THEN AP_TERM_TAC THEN
+         UNDISCH_TAC
+           `REJ_NIBBLES_ETA4 (SUB_LIST(0,8 * nn) (inlist:byte list)) =
+            (niblist:int16 list)` THEN
+         ASM_REWRITE_TAC[];
+         ALL_TAC] THEN
+       DBG "04k1 CASE_B after REJ_SAMPLE=MAP" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_b_04k1.txt" THEN
        CHEAT_TAC;
        (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
           prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
