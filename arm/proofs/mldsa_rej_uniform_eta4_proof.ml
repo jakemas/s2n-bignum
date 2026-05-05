@@ -1891,6 +1891,60 @@ let VAL_WORD_JOIN_INT32_INT64 = prove
   REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
   MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
 
+(* SUB_LIST_EQ_LIST_OF_SEQ: SUB_LIST(0, n) l = list_of_seq (EL . l) n whenever
+   n <= LENGTH l. Together with LIST_OF_SEQ_CONV this unfolds a prefix SUB_LIST
+   to an explicit list. *)
+
+let SUB_LIST_EQ_LIST_OF_SEQ = prove
+ (`!n l:A list. n <= LENGTH l ==> SUB_LIST (0,n) l = list_of_seq (\i. EL i l) n`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[SUB_LIST_CLAUSES; LIST_OF_SEQ]; ALL_TAC] THEN
+  LIST_INDUCT_TAC THENL [REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[SUB_LIST_CLAUSES; LIST_OF_SEQ; LENGTH; LE_SUC] THEN
+  DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `t:A list`) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[EL; HD; TL; o_THM] THEN
+  AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  REWRITE_TAC[FUN_EQ_THM; o_THM; EL; TL]);;
+
+(* PAIR_MAP_IDX_128: the Case A writeback identity. For any niblist of length
+   at least 256, the bignum_of_wordlist of 128 explicit int64 word_joins
+   (each packing two int32s of the form word_sx(word_sub (word 4) (EL k niblist)))
+   equals num_of_wordlist of MAP (word_sx o word_sub(word 4)) over the 256-byte
+   prefix SUB_LIST(0,256) niblist. Proof strategy: (1) BIGNUM_OF_WORDLIST_EQ_NUM_OF_WORDLIST,
+   (2) collapse via GSYM pair_wordlist starting from the tail NIL, (3) NUM_OF_PAIR_WORDLIST
+   to peel off pair_wordlist, (4) SUB_LIST_EQ_LIST_OF_SEQ + LIST_OF_SEQ_CONV to
+   expand the SUB_LIST on RHS, (5) MAP clauses to match element-wise.
+   The LHS list is an explicit 128-entry form — built below via LIST_OF_SEQ_CONV
+   to avoid transcribing 128 entries manually. *)
+
+let PAIR_MAP_IDX_128 =
+  let pairs_str = String.concat ";\n      "
+    (List.map (fun k ->
+       Printf.sprintf
+         "word_join (word_sx (word_sub (word 4:int16) (EL %d l)):int32) (word_sx (word_sub (word 4:int16) (EL %d l)):int32)"
+         (2*k+1) (2*k)) (0--127)) in
+  let goal_str = Printf.sprintf
+    "!l:int16 list. 256 <= LENGTH l ==> \
+     bignum_of_wordlist [%s] = \
+     num_of_wordlist (MAP (\\x:int16. word_sx (word_sub (word 4) x):int32) (SUB_LIST (0,256) l))"
+    pairs_str in
+  prove
+   (parse_term goal_str,
+    REPEAT STRIP_TAC THEN
+    REWRITE_TAC[BIGNUM_OF_WORDLIST_EQ_NUM_OF_WORDLIST] THEN
+    SUBGOAL_THEN `[]:int64 list = pair_wordlist ([]:int32 list)` (fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+     [REWRITE_TAC[pair_wordlist]; ALL_TAC] THEN
+    REWRITE_TAC[GSYM(el 0 (CONJUNCTS pair_wordlist))] THEN
+    REWRITE_TAC[NUM_OF_PAIR_WORDLIST] THEN
+    MP_TAC(ISPECL [`256`; `l:int16 list`] SUB_LIST_EQ_LIST_OF_SEQ) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    DISCH_THEN SUBST1_TAC THEN
+    CONV_TAC(RAND_CONV(RAND_CONV(RAND_CONV LIST_OF_SEQ_CONV))) THEN
+    REWRITE_TAC[MAP]);;
+
 (* BIGNUM_WORDJOIN_PAIRS_EXISTS: for any even-length int32 list, there exists
    a unique int64-pair list whose bignum_of_wordlist equals num_of_wordlist l.
    Each pairs[i] = word_join (EL (2i+1) l) (EL (2i) l). *)
@@ -2417,22 +2471,14 @@ e (DBG "01 START" THEN
         [MATCH_MP_TAC STACK_CONTENT_LARGE THEN ASM_REWRITE_TAC[];
          ALL_TAC] THEN
        DBG "04u1 CASE_A after STACK_CONTENT→SUB_LIST" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_pre_closure.txt" THEN
-       (* Apply BIGNUM_WORDJOIN_PAIRS_EXISTS: given LENGTH l = 2*n, exists *)
-       (* pairs s.t. bignum_of_wordlist pairs = num_of_wordlist l + EL-spec. *)
-       MP_TAC(ISPECL
-         [`128`;
-          `MAP (\x. word_sx (word_sub (word 4:int16) x):int32)
-               (SUB_LIST(0, 256) (niblist:int16 list))`]
-         BIGNUM_WORDJOIN_PAIRS_EXISTS) THEN
-       ANTS_TAC THENL
-        [REWRITE_TAC[LENGTH_MAP; LENGTH_SUB_LIST] THEN
-         UNDISCH_TAC `256 <= LENGTH (niblist:int16 list)` THEN ARITH_TAC;
-         ALL_TAC] THEN
-       DISCH_THEN(X_CHOOSE_THEN `pairs:int64 list` STRIP_ASSUME_TAC) THEN
-       DBG "04u2 CASE_A after CHOOSE pairs" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_choose.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
+       (* Close Case A using the scaled pair-form identity PAIR_MAP_IDX_128.
+          The goal here is exactly of the form
+            bignum_of_wordlist [word_join ...; ...(128 entries)...] =
+            num_of_wordlist (MAP f (SUB_LIST (0,256) niblist))
+          where the word_joins form the byte-pair packing of the filtered
+          nibbles, each entry being word_sx(word_sub (word 4) (EL k niblist)). *)
+       MATCH_MP_TAC PAIR_MAP_IDX_128 THEN
+       ASM_REWRITE_TAC[]]]] THEN
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
