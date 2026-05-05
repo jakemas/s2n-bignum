@@ -2505,8 +2505,7 @@ e (DBG "01 START" THEN
          THENC TOP_DEPTH_CONV BETA_CONV
          THENC NUM_REDUCE_CONV)) THEN
        DBG "04u3 CASE_A after list_of_seq unfold" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_unfold.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
+       REFL_TAC]]] THEN  (* Case A CLOSED *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
