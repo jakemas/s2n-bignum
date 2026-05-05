@@ -1219,6 +1219,119 @@ let WORD_SUBWORD_JOIN_NOW_H = prove
   REPEAT GEN_TAC THEN REWRITE_TAC[WORD_OF_NUM_4INT16] THEN
   CONV_TAC WORD_BLAST);;
 
+(* EL_SUB_LIST: EL i (SUB_LIST(m,n) l) = EL (m+i) l when i<n and m+i<LENGTH l. *)
+
+let EL_SUB_LIST = prove
+ (`!l:(A)list. !m n i:num.
+     i < n /\ m + i < LENGTH l
+     ==> EL i (SUB_LIST (m,n) l) = EL (m + i) l`,
+  LIST_INDUCT_TAC THEN REWRITE_TAC[LENGTH; LT] THEN
+  MATCH_MP_TAC num_INDUCTION THEN CONJ_TAC THENL
+   [MATCH_MP_TAC num_INDUCTION THEN CONJ_TAC THENL
+     [REWRITE_TAC[LT];
+      X_GEN_TAC `n:num` THEN DISCH_THEN(K ALL_TAC) THEN
+      X_GEN_TAC `i:num` THEN REWRITE_TAC[SUB_LIST; ADD_CLAUSES] THEN
+      STRUCT_CASES_TAC (SPEC `i:num` num_CASES) THENL
+       [REWRITE_TAC[EL; HD];
+        REWRITE_TAC[EL; TL; LT_SUC; LENGTH; ADD_CLAUSES] THEN
+        STRIP_TAC THEN
+        FIRST_X_ASSUM(MP_TAC o SPECL [`0`; `n:num`; `n':num`]) THEN
+        ASM_REWRITE_TAC[ADD_CLAUSES] THEN
+        DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC]];
+    X_GEN_TAC `m:num` THEN DISCH_THEN(K ALL_TAC) THEN
+    X_GEN_TAC `n:num` THEN X_GEN_TAC `i:num` THEN
+    REWRITE_TAC[SUB_LIST; LENGTH; ADD_CLAUSES; EL; TL] THEN
+    STRIP_TAC THEN
+    FIRST_X_ASSUM(MP_TAC o SPECL [`m:num`; `n:num`; `i:num`]) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC]);;
+
+(* SUB_LIST_4_EL: SUB_LIST(k,4) = [EL k; EL(k+1); EL(k+2); EL(k+3)]. *)
+
+let SUB_LIST_4_EL = prove
+ (`!l:(A)list. !k:num.
+     k + 4 <= LENGTH l
+     ==> SUB_LIST(k, 4) l =
+         [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) l]`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[LIST_EQ; LENGTH_SUB_LIST; LENGTH] THEN
+  CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  X_GEN_TAC `i:num` THEN
+  REWRITE_TAC[ARITH_RULE `SUC(SUC(SUC(SUC 0))) = 4`] THEN
+  STRIP_TAC THEN
+  MP_TAC(ISPECL [`l:(A)list`; `k:num`; `4`; `i:num`] EL_SUB_LIST) THEN
+  ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC] THEN
+  DISJ_CASES_TAC(ARITH_RULE
+    `i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ 4 <= i`) THEN
+  REPEAT(FIRST_X_ASSUM DISJ_CASES_TAC) THEN
+  ASM_REWRITE_TAC[ADD_CLAUSES; EL; HD; TL] THEN
+  TRY ASM_ARITH_TAC THEN
+  (SUBGOAL_THEN
+    `EL 1 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+1) l /\
+     EL 2 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+2) l /\
+     EL 3 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+3) l`
+    (fun th -> REWRITE_TAC[th]) THENL
+    [REWRITE_TAC[ARITH_RULE `3 = SUC 2 /\ 2 = SUC 1 /\ 1 = SUC 0`] THEN
+     REWRITE_TAC[EL; HD; TL];
+     REFL_TAC]));;
+
+(* WORD_SUBWORD_JOIN_SUB_LIST_H: the key halfword-extraction bridge for       *)
+(* Case A. Given a position a in niblist with a+8 <= LENGTH niblist, the     *)
+(* word_subword of word_join (word(num_of_wordlist (SUB_LIST(a+4,4) niblist)))*)
+(* (word(num_of_wordlist (SUB_LIST(a,4) niblist))) at offset 16k yields      *)
+(* EL (a+k) niblist for k in {0,...,7}.                                     *)
+
+let WORD_SUBWORD_JOIN_SUB_LIST_H = prove
+ (`!niblist:int16 list. !a:num.
+     a + 8 <= LENGTH niblist
+     ==>
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (0,16):int16 =
+       EL a niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (16,16):int16 =
+       EL (a+1) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (32,16):int16 =
+       EL (a+2) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (48,16):int16 =
+       EL (a+3) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (64,16):int16 =
+       EL (a+4) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (80,16):int16 =
+       EL (a+5) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (96,16):int16 =
+       EL (a+6) niblist /\
+     word_subword (word_join
+       (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
+       (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (112,16):int16 =
+       EL (a+7) niblist`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `a + 4 <= LENGTH(niblist:int16 list) /\
+                (a + 4) + 4 <= LENGTH(niblist:int16 list)` STRIP_ASSUME_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  FIRST_ASSUM(fun lo_th ->
+    FIRST_ASSUM(fun hi_th ->
+      let lo_eq = MATCH_MP
+        (SPECL [`niblist:int16 list`; `a:num`] SUB_LIST_4_EL) lo_th in
+      let hi_eq = MATCH_MP
+        (SPECL [`niblist:int16 list`; `a+4:num`] SUB_LIST_4_EL) hi_th in
+      REWRITE_TAC[lo_eq; hi_eq])) THEN
+  REWRITE_TAC[ARITH_RULE `(a+4)+1 = a+5 /\ (a+4)+2 = a+6 /\ (a+4)+3 = a+7`] THEN
+  REWRITE_TAC[WORD_OF_NUM_4INT16] THEN CONV_TAC WORD_BLAST);;
+
+Printf.printf "EL_SUB_LIST / SUB_LIST_4_EL / WORD_SUBWORD_JOIN_SUB_LIST_H proved\n%!";;
+
 (* REJ_SAMPLE_ETA4_SUB_LIST_PREFIX: moved early for forward-reference by
    SUB_LIST_256_PREFIX_LARGE. *)
 
