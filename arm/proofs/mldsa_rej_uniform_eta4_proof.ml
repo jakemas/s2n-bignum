@@ -1925,7 +1925,13 @@ e (DBG "01 START" THEN
        DBG "04r CASE_A after bytes128 SPLIT" THEN
        ASM_REWRITE_TAC[] THEN
        DBG "04s CASE_A after ASM_REWRITE chain" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_chain_v2.txt" THEN
+       (* Unfold STACK_CONTENT via STACK_CONTENT_LARGE: in Case A, STACK_CONTENT
+          niblist = SUB_LIST(0, 256) niblist. Already applied earlier at 04n.
+          Here we want to normalize the RHS's MAP expression. *)
+       (* Apply DERIVED_OUTPUT_LARGE to reverse: MAP f (SUB_LIST(0,256) niblist)
+          wait — we want the opposite direction, to get MAP f (STACK_CONTENT niblist) form. *)
+       DBG "04t CASE_A: goal ready for final word bitblast" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_final_form.txt" THEN
        CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
