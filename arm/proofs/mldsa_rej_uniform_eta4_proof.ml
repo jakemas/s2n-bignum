@@ -1735,6 +1735,54 @@ let SSHLL_CHUNK_WORD_SUBWORD_LO_INT64_HIINNER = BITBLAST_RULE
   word_join (word_sx(word_sub (word 4:int16) (word_subword c (80,16):int16)):int32)
             (word_sx(word_sub (word 4:int16) (word_subword c (64,16):int16)):int32):int64`;;
 
+(* BIGNUM_OF_WORDLIST_EQ_NUM_OF_WORDLIST: bignum_of_wordlist is num_of_wordlist
+   at int64 precision. *)
+
+let BIGNUM_OF_WORDLIST_EQ_NUM_OF_WORDLIST = prove
+ (`!l:int64 list. bignum_of_wordlist l = num_of_wordlist l`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[bignum_of_wordlist; num_of_wordlist; DIMINDEX_64]);;
+
+(* BIGNUM_CONS_WORDJOIN: decompose one int64 = word_join of 2 int32s into
+   num_of_wordlist of 2 int32s. *)
+
+let BIGNUM_CONS_WORDJOIN = prove
+ (`!a:int32. !b:int32. !t:int64 list.
+     bignum_of_wordlist (CONS (word_join a b:int64) t) =
+     num_of_wordlist [b; a] + 2 EXP 64 * bignum_of_wordlist t`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[bignum_of_wordlist; num_of_wordlist;
+              DIMINDEX_32; MULT_CLAUSES; ADD_CLAUSES] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_JOIN; DIMINDEX_64; DIMINDEX_32] THEN
+  MP_TAC(ISPEC `a:int32` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b:int32` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
+  SUBGOAL_THEN `(2 EXP 32 * val(a:int32) + val(b:int32)) MOD 2 EXP 64 =
+                2 EXP 32 * val a + val b` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+    ARITH_TAC]);;
+
+(* BIGNUM_WORDJOIN_APPEND: inductive step — given tail equals num_of_wordlist form,
+   CONS of word_join equals APPEND of 2-element prefix. *)
+
+let BIGNUM_WORDJOIN_APPEND = prove
+ (`!a:int32. !b:int32. !t:int64 list. !tlist:int32 list.
+     bignum_of_wordlist t = num_of_wordlist tlist /\
+     32 * LENGTH tlist = 64 * LENGTH t
+     ==>
+     bignum_of_wordlist (CONS (word_join a b:int64) t) =
+     num_of_wordlist (APPEND [b; a] tlist)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[NUM_OF_WORDLIST_APPEND; DIMINDEX_32] THEN
+  ASM_REWRITE_TAC[] THEN
+  MP_TAC(SPECL [`a:int32`; `b:int32`; `t:int64 list`] BIGNUM_CONS_WORDJOIN) THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[num_of_wordlist; DIMINDEX_32; LENGTH; MULT_CLAUSES; ADD_CLAUSES] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[ARITH_RULE `2 EXP 64 = 2 EXP 64`] THEN
+  ARITH_TAC);;
+
 let SSHLL_CHUNK_WORD_SUBWORD_HI_INT64_HIINNER = BITBLAST_RULE
  `word_subword
   (word_join
