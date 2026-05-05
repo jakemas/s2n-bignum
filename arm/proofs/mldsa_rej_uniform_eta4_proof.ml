@@ -2323,6 +2323,17 @@ e (DBG "01 START" THEN
                    SSHLL_CHUNK_WORD_SUBWORD_LO_INT64_HIINNER;
                    SSHLL_CHUNK_WORD_SUBWORD_HI_INT64_HIINNER] THEN
        DBG "04t CASE_A after chunk word_subword collapse (all 4 variants)" THEN
+       (* Apply WORD_SUBWORD_JOIN_SUB_LIST_H for a in {0,8,16,...,248} to    *)
+       (* reduce each chunk's 8 word_subword(word_join ...) halfword reads   *)
+       (* to EL (a+k) niblist. *)
+       MP_TAC(GEN `a:num` (ISPECL [`niblist:int16 list`; `a:num`]
+                                  WORD_SUBWORD_JOIN_SUB_LIST_H)) THEN
+       DISCH_THEN(fun univ_th ->
+         MAP_EVERY (fun i ->
+           let inst = SPEC (mk_small_numeral i) univ_th in
+           let premise = EQT_ELIM (NUM_LE_CONV (lhand(concl inst))) in
+           REWRITE_TAC[MP inst premise]) (List.map (fun k -> 8 * k) (0--31))) THEN
+       DBG "04t2 CASE_A after halfword->EL reduction" THEN
        (* Flatten LHS bignum_of_wordlist of word_joins to num_of_wordlist of
           int32s via BIGNUM_CONS_WORDJOIN. Also handle base case (empty list). *)
        REWRITE_TAC[BIGNUM_CONS_WORDJOIN; bignum_of_wordlist;
