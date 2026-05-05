@@ -1894,8 +1894,39 @@ e (DBG "01 START" THEN
        RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_MULT_CONV)) THEN
        RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
        DBG "04o CASE_A after BK facts added + normalized" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_bk_before_lexpand.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP - interactive work needed next *)
+       (* BEFORE touching any hyps: build the 64 b_k = word(...) theorems and
+          ADD them as hyps via ASSUME_TAC. *)
+       (fun (asl, _ as gl) ->
+         let bk_trans_thms = List.filter_map (fun (_, th) ->
+           let c = concl th in
+           if is_eq c then
+             let rhs = rand c in
+             if is_var rhs && String.length (fst (dest_var rhs)) >= 2 &&
+                String.sub (fst (dest_var rhs)) 0 2 = "b_" then
+               let lhs = lhand c in
+               let bk_fact = List.find_opt (fun (_, th2) ->
+                 let c2 = concl th2 in
+                 is_eq c2 && lhs = lhand c2 && rhs <> rand c2) asl in
+               (match bk_fact with
+                | Some (_, bk_th) ->
+                  Some (TRANS (SYM th) bk_th)
+                | None -> None)
+             else None
+           else None) asl in
+         Printf.printf "DEBUG: bk_trans thms count=%d\n%!"
+           (List.length bk_trans_thms);
+         MAP_EVERY ASSUME_TAC bk_trans_thms gl) THEN
+       DBG "04p CASE_A after 64 b_k=word(...) hyps added" THEN
+       (* Now LEXPAND + SPLIT + ASM_REWRITE chains all together. *)
+       REWRITE_TAC[ARITH_RULE `1024 = 8 * 128`] THEN
+       CONV_TAC(ONCE_DEPTH_CONV BIGNUM_LEXPAND_CONV) THEN
+       DBG "04q CASE_A after LEXPAND" THEN
+       RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1))) THEN
+       DBG "04r CASE_A after bytes128 SPLIT" THEN
+       ASM_REWRITE_TAC[] THEN
+       DBG "04s CASE_A after ASM_REWRITE chain" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_chain_v2.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
