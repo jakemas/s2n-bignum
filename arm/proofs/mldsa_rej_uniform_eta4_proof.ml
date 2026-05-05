@@ -597,6 +597,16 @@ let BYTE_SPLIT_AND = map (fun k ->
      (k*16) (k*16) (k*16+8))))
   (0--7);;
 
+(* For any byte b, val b DIV/MOD 16 is < 16 < 65536, so the MOD 65536 is
+   a no-op.  Used in the TBL correctness closure where FILTER produces
+   `word(val b DIV 16 MOD 65536):int16` on RHS, and WORD_BLAST needs
+   `word(val b DIV 16):int16` to match the LHS. *)
+let VAL_BYTE_NIB_MOD_65536 = prove(
+  `!b:byte. (val b DIV 16) MOD 65536 = val b DIV 16 /\
+            val b MOD 16 MOD 65536 = val b MOD 16`,
+  GEN_TAC THEN CONJ_TAC THEN MATCH_MP_TAC MOD_LT THEN
+  MP_TAC(ISPEC `b:byte` VAL_BOUND) THEN REWRITE_TAC[DIMINDEX_8] THEN ARITH_TAC);;
+
 let BYTE_SPLIT_USHR = map (fun k ->
     BITBLAST_RULE(parse_term(Printf.sprintf
      "!x:int128 b:byte. \
@@ -783,41 +793,6 @@ let REJ_NIBBLES_ETA4_LENGTH_4 = prove
 (* brute-force case analysis over the popcount index, following the pattern  *)
 (* at mldsa_rej_uniform.ml:869-923.                                           *)
 (* ========================================================================= *)
-
-(* TBL_ETA4_OUTPUT: abstract contract for the eta-table TBL correctness.
-   Given that the SIMD intermediate `nibbles` contains 8 halfwords that each
-   equal word_zx of a nibble (either word_and b (word 15) or word_ushr b 4)
-   of 4 bytes b0..b3, the TBL instruction applied to (nibbles, eta_table[k])
-   where k is the popcount mask index produces an int128 whose val equals
-   num_of_wordlist(REJ_NIBBLES_ETA4 [b0;b1;b2;b3]). The premise captures the
-   ARM TBL semantics via `is_rej_tbl_output_eta4 r nibbles b0..b3` abstractly;
-   in the final proof this would unfold to a concrete BYTES_EQ_NUM_OF_WORDLIST
-   + 256-entry table case analysis (cf. mldsa_rej_uniform.ml:869-923). *)
-
-(* TBL_ETA4_OUTPUT: the single named CHEAT that encapsulates the TBL
-   correctness for the eta-table, discharging the two Q16/Q17 equalities
-   in the first-half existential. Premise: 8 halfword structural identities
-   (nibbles = f(4 bytes)). Conclusion: any q_final = word(num_of_wordlist(
-   REJ_NIBBLES_ETA4 [4 bytes])). This is UNSOUND as stated (q_final is
-   universally quantified with no dependency on bytes), and so is an
-   explicit admitted lemma. The genuine proof will parameterize q_final
-   as the TBL output and perform the 256-entry case analysis (see note
-   above). *)
-
-let TBL_ETA4_OUTPUT = prove
- (`!q_final:int128 nibbles:int128 b0 b1 b2 b3:byte.
-     word_subword nibbles (0,16):int16 = word_zx(word_and b0 (word 15):byte) /\
-     word_subword nibbles (16,16):int16 = word_zx(word_ushr b0 4:byte) /\
-     word_subword nibbles (32,16):int16 = word_zx(word_and b1 (word 15):byte) /\
-     word_subword nibbles (48,16):int16 = word_zx(word_ushr b1 4:byte) /\
-     word_subword nibbles (64,16):int16 = word_zx(word_and b2 (word 15):byte) /\
-     word_subword nibbles (80,16):int16 = word_zx(word_ushr b2 4:byte) /\
-     word_subword nibbles (96,16):int16 = word_zx(word_and b3 (word 15):byte) /\
-     word_subword nibbles (112,16):int16 = word_zx(word_ushr b3 4:byte)
-     ==>
-     q_final = word(num_of_wordlist
-                     (REJ_NIBBLES_ETA4 [b0;b1;b2;b3]))`,
-  CHEAT_TAC);;
 
 let REJ_NIBBLES_ETA4_SPLIT_8 = prove
  (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
@@ -1174,10 +1149,30 @@ e (DBG "01 START" THEN
                       word_subword x (k*16+8,8) = word 0
           Apply via `MATCH_MP` against each assumption — the 16 halfword
           identities produce the 16 strip pairs (32 byte-level facts). *)
-       MAP_EVERY (fun lemma ->
-           TRY(FIRST_X_ASSUM(fun h -> MP_TAC(MATCH_MP lemma h)) THEN
-               STRIP_TAC))
-         (BYTE_SPLIT_AND @ BYTE_SPLIT_USHR) THEN
+       (* Use MATCH_MP to apply each byte-split lemma to every matching
+          halfword identity assumption.  Collect all 32 byte-level facts,
+          then add them via MAP_EVERY ASSUME_TAC. *)
+       (fun (asl, w) ->
+          let halfword_hyps =
+            List.filter (fun (_,th) ->
+              let c = concl th in
+              is_eq c &&
+              (try let l = lhand c in
+                   match l with
+                   | Comb(Comb(Const("word_subword",_), v),
+                          Comb(Comb(Const(",",_), _), len_tm)) ->
+                       is_var v &&
+                       (let nm = fst(dest_var v) in
+                        nm = "nibbles0" || nm = "nibbles1b") &&
+                       (try dest_small_numeral len_tm = 16 with _ -> false)
+                   | _ -> false
+               with _ -> false)) asl in
+          let byte_lemmas = BYTE_SPLIT_AND @ BYTE_SPLIT_USHR in
+          let new_facts = List.concat (List.map (fun (_, h) ->
+            List.concat (List.map (fun lem ->
+              try CONJUNCTS(MATCH_MP lem h)
+              with _ -> []) byte_lemmas)) halfword_hyps) in
+          (MAP_EVERY ASSUME_TAC new_facts) (asl, w)) THEN
        UNDISCH_TAC
         `read(memory :> bytes(table,4096)) s29 =
          num_of_wordlist mldsa_rej_uniform_eta_table` THEN
@@ -1203,13 +1198,9 @@ e (DBG "01 START" THEN
        ASM_REWRITE_TAC[] THEN
        DISCARD_MATCHING_ASSUMPTIONS
         [`read Q16 s = x`; `read Q17 s = x`] THEN
-       DBG "TBL-a before unfold" THEN
        (* Unfold REJ_NIBBLES_ETA4 -> FILTER + NIBBLES_OF_BYTES on the 4
           concrete byte-subwords, then FILTER itself, so the 8 `val x < 9`
-          conditions become concrete ifs with x = word(val b_k MOD/DIV 16).
-          After FILTER unfolding, normalize val(word(val b MOD 16)) -> val b MOD 16
-          (via VAL_WORD_NIBBLE_LT) so both LHS (TBL) and RHS (filtered list)
-          use the same condition form. *)
+          conditions become concrete ifs with x = word(val b_k MOD/DIV 16). *)
        REWRITE_TAC[REJ_NIBBLES_ETA4; NIBBLES_OF_BYTES; NIBBLE_PAIR; APPEND] THEN
        REWRITE_TAC[FILTER] THEN
        (* Normalize val(word_zx(word_and/ushr ...)) on both LHS (TBL output
@@ -1217,23 +1208,14 @@ e (DBG "01 START" THEN
           val(word_subword loaded_d (k,8)) MOD/DIV 16 < 9. *)
        REWRITE_TAC[VAL_WORD_ZX_BYTE16; BYTE_AND_15_MOD; BYTE_USHR4_DIV;
                    VAL_WORD_NIBBLE_LT] THEN
-       DBG "TBL-b before COND_CASES" THEN
        REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN
-       DBG "TBL-c after COND_CASES" THEN
-       (* All ifs replaced with bitval true/false. Reduce numerically. *)
        REWRITE_TAC[BITVAL_CLAUSES] THEN
        CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
        CONV_TAC NUM_REDUCE_CONV THEN
-       DBG "TBL-d after num_reduce" THEN
-       (* Normalize word_add table (word 0) = table to match the 0-offset
-          bytes128 hypothesis which is stated as `read bytes128 table`. *)
+       (* Normalize word_add table (word 0) = table and apply the 256 bytes128
+          hypotheses to substitute concrete int128 table-entry values. *)
        REWRITE_TAC[WORD_ADD_0] THEN
-       DBG "TBL-e after WORD_ADD_0" THEN
-       (* Now the memread address `word_add table (word const)` should be
-          concrete. Use ASM_REWRITE with the 256 bytes128 hypotheses to
-          substitute concrete int128 values. *)
        ASM_REWRITE_TAC[] THEN
-       DBG "TBL-f after asm rewrite" THEN
        (* Reduce word_subword of constant int128 values to constant bytes,
           then val, then reduce the 8*val computation.  Also unfold
           num_of_wordlist on the concrete filtered list on RHS. *)
@@ -1242,22 +1224,22 @@ e (DBG "01 START" THEN
        CONV_TAC NUM_REDUCE_CONV THEN
        REWRITE_TAC[num_of_wordlist; MULT_CLAUSES; ADD_CLAUSES] THEN
        CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
-       DBG "TBL-g after final reductions" THEN
-       (* Apply halfword identities from prove_hw (nibbles1b (k,16) =
-          word_zx(byte nibble) etc) so TBL output and RHS filter align. *)
        RULE_ASSUM_TAC(REWRITE_RULE[BYTE_AND_15_MOD; BYTE_USHR4_DIV;
                                    VAL_WORD_ZX_BYTE16; VAL_WORD_NIBBLE_LT]) THEN
        ASM_REWRITE_TAC[] THEN
        REWRITE_TAC[VAL_WORD; DIMINDEX_16] THEN
        CONV_TAC NUM_REDUCE_CONV THEN
-       DBG "TBL-h before WORD_BLAST" THEN
-       DUMP_STATE_TAC "/tmp/eta4/tbl_after_cc.txt" THEN
-       (TRY(CONV_TAC WORD_BLAST) THEN
-        DBG "TBL-i after TRY WORD_BLAST" THEN
-        DUMP_STATE_TAC "/tmp/eta4/tbl_after_blast.txt" THEN
-        CHEAT_TAC);
+       REWRITE_TAC[VAL_BYTE_NIB_MOD_65536] THEN
+       CONV_TAC WORD_BLAST;
        STRIP_TAC] THEN
      DBG "10a after TBL correctness subgoal" THEN
+     (* Discard the ARM stepper's Q16/Q17 word_join form — we have the clean
+        equation from the SUBGOAL (read Q16/Q17 s29 = word(num_of_wordlist ...))
+        and the nested word_join version only causes ASM_REWRITE_TAC to rewrite
+        the goal into an un-closable shape. *)
+     DISCARD_MATCHING_ASSUMPTIONS
+      [`read Q16 s = word_join x y`; `read Q17 s = word_join x y`] THEN
+     DBG "10a2 after DISCARD arm Q16/Q17 word_join" THEN
      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
      ASM_REWRITE_TAC[WORD_SUBWORD_AND] THEN
      CONV_TAC(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
@@ -1425,33 +1407,15 @@ e (DBG "01 START" THEN
          `word_subword (loaded_d:int64) (56,8):byte`] COUNT_BRIDGE_ABSTRACT_4) THEN
        ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
        DISCH_THEN SUBST1_TAC THEN REFL_TAC;
-       (* Q16 / Q17: inline TBL correctness proof.
-          Reference template from mldsa_rej_uniform.ml:1500-1538. *)
-       (UNDISCH_TAC
-         `read(memory :> bytes(table,4096)) s29 =
-          num_of_wordlist mldsa_rej_uniform_eta_table` THEN
-        REPLICATE_TAC 4
-         (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV)
-               [GSYM NUM_OF_PAIR_WORDLIST]) THEN
-        REWRITE_TAC[mldsa_rej_uniform_eta_table; pair_wordlist] THEN
-        CONV_TAC WORD_REDUCE_CONV THEN
-        CONV_TAC(LAND_CONV BYTES_EQ_NUM_OF_WORDLIST_EXPAND_CONV) THEN
-        REWRITE_TAC[GSYM BYTES128_WBYTES] THEN REPEAT STRIP_TAC THEN
-        DISCARD_MATCHING_ASSUMPTIONS
-         [`read Q24 s = x`; `read Q25 s = x`] THEN
-        REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
-          (fun th -> is_var(rhs(concl th)) &&
-                     let n = fst(dest_var(rhs(concl th))) in
-                     n = "tab0" || n = "tab1"))) THEN
-        DISCARD_MATCHING_ASSUMPTIONS
-         [`read X12 s = x`; `read X13 s = x`] THEN
-        REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o check
-          (fun th -> is_var(rhs(concl th)) &&
-                     let n = fst(dest_var(rhs(concl th))) in
-                     n = "idx0" || n = "idx1"))) THEN
-        ASM_REWRITE_TAC[] THEN
-        DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_after_subst.txt" THEN
-        CHEAT_TAC)];
+       (* Q16 / Q17: goal is `word_join(<TBL>) = word(num_of_wordlist(...))`.
+          My SUBGOAL_THEN provided `read Q16/Q17 s29 = word(num_of_wordlist(...))`.
+          ARM stepper provided `read Q16/Q17 s29 = <word_join expression>`.
+          TRANS these two (after SYM on one) to get the desired equality. *)
+       (DUMP_STATE_TAC "/tmp/eta4/q16_tbl_goal.txt" THEN
+        FIRST_ASSUM(fun my_hyp ->
+          FIRST_ASSUM(fun arm_hyp ->
+            try ACCEPT_TAC(TRANS (SYM arm_hyp) my_hyp)
+            with _ -> NO_TAC)))];
      DBG "14e after FIRST branches" THEN
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
