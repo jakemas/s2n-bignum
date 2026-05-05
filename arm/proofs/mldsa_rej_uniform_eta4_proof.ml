@@ -1260,19 +1260,20 @@ let SUB_LIST_4_EL = prove
   STRIP_TAC THEN
   MP_TAC(ISPECL [`l:(A)list`; `k:num`; `4`; `i:num`] EL_SUB_LIST) THEN
   ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN SUBST1_TAC] THEN
-  DISJ_CASES_TAC(ARITH_RULE
-    `i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ 4 <= i`) THEN
-  REPEAT(FIRST_X_ASSUM DISJ_CASES_TAC) THEN
-  ASM_REWRITE_TAC[ADD_CLAUSES; EL; HD; TL] THEN
-  TRY ASM_ARITH_TAC THEN
-  (SUBGOAL_THEN
-    `EL 1 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+1) l /\
-     EL 2 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+2) l /\
-     EL 3 [EL k l; EL (k+1) l; EL (k+2) l; EL (k+3) (l:(A)list)] = EL(k+3) l`
-    (fun th -> REWRITE_TAC[th]) THENL
-    [REWRITE_TAC[ARITH_RULE `3 = SUC 2 /\ 2 = SUC 1 /\ 1 = SUC 0`] THEN
-     REWRITE_TAC[EL; HD; TL];
-     REFL_TAC]));;
+  SUBGOAL_THEN
+    `!P (a:A) b c d.
+       (i = 0 ==> P a) /\ (i = 1 ==> P b) /\
+       (i = 2 ==> P c) /\ (i = 3 ==> P d)
+       ==> P(EL i [a;b;c;d])`
+    (fun th -> MATCH_MP_TAC th) THENL
+   [REPEAT GEN_TAC THEN STRIP_TAC THEN UNDISCH_TAC `i < 4` THEN
+    REWRITE_TAC[ARITH_RULE
+      `i < 4 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3`] THEN
+    STRIP_TAC THEN
+    ASM_SIMP_TAC[ARITH_RULE `3 = SUC 2 /\ 2 = SUC 1 /\ 1 = SUC 0`;
+                 EL; HD; TL];
+    REPEAT CONJ_TAC THEN DISCH_THEN SUBST1_TAC THEN
+    REWRITE_TAC[ADD_CLAUSES]]);;
 
 (* WORD_SUBWORD_JOIN_SUB_LIST_H: the key halfword-extraction bridge for       *)
 (* Case A. Given a position a in niblist with a+8 <= LENGTH niblist, the     *)
@@ -1316,17 +1317,14 @@ let WORD_SUBWORD_JOIN_SUB_LIST_H = prove
        (word(num_of_wordlist(SUB_LIST(a+4,4) niblist)):int64)
        (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64):int128) (112,16):int16 =
        EL (a+7) niblist`,
-  REPEAT STRIP_TAC THEN
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
   SUBGOAL_THEN `a + 4 <= LENGTH(niblist:int16 list) /\
                 (a + 4) + 4 <= LENGTH(niblist:int16 list)` STRIP_ASSUME_TAC THENL
    [ASM_ARITH_TAC; ALL_TAC] THEN
-  FIRST_ASSUM(fun lo_th ->
-    FIRST_ASSUM(fun hi_th ->
-      let lo_eq = MATCH_MP
-        (SPECL [`niblist:int16 list`; `a:num`] SUB_LIST_4_EL) lo_th in
-      let hi_eq = MATCH_MP
-        (SPECL [`niblist:int16 list`; `a+4:num`] SUB_LIST_4_EL) hi_th in
-      REWRITE_TAC[lo_eq; hi_eq])) THEN
+  MP_TAC(ISPECL [`niblist:int16 list`; `a:num`] SUB_LIST_4_EL) THEN
+  MP_TAC(ISPECL [`niblist:int16 list`; `a+4:num`] SUB_LIST_4_EL) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN SUBST1_TAC THEN DISCH_THEN SUBST1_TAC THEN
   REWRITE_TAC[ARITH_RULE `(a+4)+1 = a+5 /\ (a+4)+2 = a+6 /\ (a+4)+3 = a+7`] THEN
   REWRITE_TAC[WORD_OF_NUM_4INT16] THEN CONV_TAC WORD_BLAST);;
 
