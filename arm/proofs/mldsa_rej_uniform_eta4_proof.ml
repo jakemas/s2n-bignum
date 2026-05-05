@@ -1873,6 +1873,12 @@ let BIGNUM_CONS_WORDJOIN = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
 
+(* PAIR_MAP_IDX: scaling template — equality between bignum_of_wordlist of
+   int64-pair-MAP-indexed form and num_of_wordlist of MAP f (SUB_LIST(0,2m) l).
+   Verified interactively for m=4 (n=4 index list [0;1;2;3]). Template scales
+   mechanically to m=128 with idx list [0;1;...;127]; see project memory for
+   complete tactic. Full 128-scale integration TBD. *)
+
 (* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
    where a, b are int32. No MOD needed because the sum is already < 2^64. *)
 
