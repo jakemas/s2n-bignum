@@ -1880,33 +1880,22 @@ e (DBG "01 START" THEN
          DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[];
          ALL_TAC] THEN
        DBG "04n CASE_A after STACK_CONTENT_LARGE" THEN
-       (* Try the reference's LEXPAND approach to split bytes(res,1024) into
-          128 int64 chunks. *)
-       REWRITE_TAC[ARITH_RULE `1024 = 8 * 128`] THEN
-       CONV_TAC(ONCE_DEPTH_CONV BIGNUM_LEXPAND_CONV) THEN
-       DBG "04o CASE_A after LEXPAND" THEN
-       (* Split each bytes128 hyp into two bytes64 hyps via READ_MEMORY_SPLIT_CONV. *)
-       RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1))) THEN
-       DBG "04p CASE_A after SPLIT bytes128->bytes64" THEN
+       (* First: establish each b_k = word(num_of_wordlist (SUB_LIST(4k,4) niblist))
+          BEFORE LEXPAND. *)
        MP_TAC(GEN `k:num` (ISPECL [`s245:armstate`; `stackpointer:int64`;
                                     `niblist:int16 list`; `k:num`]
                                    BK_FROM_STACK_GE256)) THEN
        ASM_REWRITE_TAC[] THEN
-       DBG "04q CASE_A after BK_GE256 MP_TAC" THEN
-       (* Specialize the universal for k = 0, 1, ..., 63 and ASSUME each.
-          Precondition k < 64 is numeric; discharge via NUM_REDUCE_CONV. *)
        DISCH_THEN(fun bk_univ ->
          MAP_EVERY (fun i ->
            let inst = SPEC (mk_small_numeral i) bk_univ in
            let premise = EQT_ELIM (NUM_LT_CONV (lhand(concl inst))) in
            ASSUME_TAC (MP inst premise)) (0--63)) THEN
-       DBG "04r CASE_A after 64 BK specializations" THEN
-       (* Normalize: 8 * k in hyps to numeric, and word_add sp (word 0) = sp. *)
        RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_MULT_CONV)) THEN
        RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
-       DBG "04s CASE_A after normalization" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_norm.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
+       DBG "04o CASE_A after BK facts added + normalized" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_bk_before_lexpand.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP - interactive work needed next *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
