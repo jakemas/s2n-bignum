@@ -1873,6 +1873,12 @@ let BIGNUM_CONS_WORDJOIN = prove
    [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
 
+(* PAIR_MAP_IDX: scaling template — equality between bignum_of_wordlist of
+   int64-pair-MAP-indexed form and num_of_wordlist of MAP f (SUB_LIST(0,2m) l).
+   Verified interactively for m=4 (n=4 index list [0;1;2;3]). Template scales
+   mechanically to m=128 with idx list [0;1;...;127]; see project memory for
+   complete tactic. Full 128-scale integration TBD. *)
+
 (* VAL_WORD_JOIN_INT32_INT64: val(word_join a b:int64) = 2^32*val a + val b
    where a, b are int32. No MOD needed because the sum is already < 2^64. *)
 
@@ -1884,6 +1890,51 @@ let VAL_WORD_JOIN_INT32_INT64 = prove
   MP_TAC(ISPEC `b:int32` VAL_BOUND) THEN
   REWRITE_TAC[DIMINDEX_32] THEN REPEAT DISCH_TAC THEN
   MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC);;
+
+(* BIGNUM_WORDJOIN_PAIRS_EXISTS: for any even-length int32 list, there exists
+   a unique int64-pair list whose bignum_of_wordlist equals num_of_wordlist l.
+   Each pairs[i] = word_join (EL (2i+1) l) (EL (2i) l). *)
+
+let BIGNUM_WORDJOIN_PAIRS_EXISTS = prove
+ (`!n l:int32 list. LENGTH l = 2 * n
+   ==> ?pairs:int64 list.
+         LENGTH pairs = n /\
+         bignum_of_wordlist pairs = num_of_wordlist l /\
+         (!i. i < n ==> EL i pairs = word_join (EL (2*i+1) l) (EL (2*i) l))`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[MULT_CLAUSES; LENGTH_EQ_NIL] THEN
+    GEN_TAC THEN DISCH_THEN SUBST1_TAC THEN
+    EXISTS_TAC `[]:int64 list` THEN
+    REWRITE_TAC[LENGTH; bignum_of_wordlist; num_of_wordlist; LT];
+    ALL_TAC] THEN
+  LIST_INDUCT_TAC THENL
+   [REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+  STRUCT_CASES_TAC (ISPEC `t:int32 list` list_CASES) THENL
+   [REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[LENGTH;
+    ARITH_RULE `SUC(SUC(LENGTH(t':int32 list))) = 2 * SUC n <=>
+                LENGTH t' = 2 * n`] THEN
+  DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `t':int32 list`) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(X_CHOOSE_THEN `pairs:int64 list` STRIP_ASSUME_TAC) THEN
+  EXISTS_TAC `CONS (word_join (h':int32) (h:int32):int64) pairs` THEN
+  ASM_REWRITE_TAC[LENGTH] THEN
+  CONJ_TAC THENL
+   [MP_TAC(SPECL [`h':int32`; `h:int32`; `pairs:int64 list`]
+                 BIGNUM_CONS_WORDJOIN) THEN
+    DISCH_THEN SUBST1_TAC THEN
+    ASM_REWRITE_TAC[num_of_wordlist; DIMINDEX_32] THEN ARITH_TAC;
+    X_GEN_TAC `i:num` THEN
+    STRUCT_CASES_TAC (SPEC `i:num` num_CASES) THENL
+     [REWRITE_TAC[EL; HD; MULT_CLAUSES; ADD_CLAUSES; TL] THEN
+      REWRITE_TAC[ARITH_RULE `1 = SUC 0`; EL; TL; HD];
+      REWRITE_TAC[EL; TL; LT_SUC] THEN DISCH_TAC THEN
+      FIRST_X_ASSUM(MP_TAC o SPEC `n':num`) THEN
+      ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+      REWRITE_TAC[ARITH_RULE `2 * SUC n' + 1 = SUC(SUC(2 * n' + 1)) /\
+                               2 * SUC n' = SUC(SUC(2 * n'))`] THEN
+      REWRITE_TAC[EL; TL; HD]]]);;
 
 (* BIGNUM_WORDJOIN_APPEND: inductive step — given tail equals num_of_wordlist form,
    CONS of word_join equals APPEND of 2-element prefix. *)
@@ -2366,10 +2417,21 @@ e (DBG "01 START" THEN
         [MATCH_MP_TAC STACK_CONTENT_LARGE THEN ASM_REWRITE_TAC[];
          ALL_TAC] THEN
        DBG "04u1 CASE_A after STACK_CONTENT→SUB_LIST" THEN
-       (* Pair-up LHS via 127 applications of BIGNUM_WORDJOIN_APPEND. Each *)
-       (* application consumes one int64 word_join and produces a 2-element *)
-       (* APPEND on the RHS num_of_wordlist list.                          *)
        DUMP_STATE_TAC "/tmp/eta4/case_a_pre_closure.txt" THEN
+       (* Apply BIGNUM_WORDJOIN_PAIRS_EXISTS: given LENGTH l = 2*n, exists *)
+       (* pairs s.t. bignum_of_wordlist pairs = num_of_wordlist l + EL-spec. *)
+       MP_TAC(ISPECL
+         [`128`;
+          `MAP (\x. word_sx (word_sub (word 4:int16) x):int32)
+               (SUB_LIST(0, 256) (niblist:int16 list))`]
+         BIGNUM_WORDJOIN_PAIRS_EXISTS) THEN
+       ANTS_TAC THENL
+        [REWRITE_TAC[LENGTH_MAP; LENGTH_SUB_LIST] THEN
+         UNDISCH_TAC `256 <= LENGTH (niblist:int16 list)` THEN ARITH_TAC;
+         ALL_TAC] THEN
+       DISCH_THEN(X_CHOOSE_THEN `pairs:int64 list` STRIP_ASSUME_TAC) THEN
+       DBG "04u2 CASE_A after CHOOSE pairs" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_choose.txt" THEN
        CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
