@@ -1559,6 +1559,238 @@ let BK_FROM_STACK_GE256 = prove
   MATCH_MP_TAC BK_FROM_STACK THEN ASM_REWRITE_TAC[] THEN
   ASM_ARITH_TAC);;
 
+(* SSHLL_CHUNK_WORD_SUBWORD_LO_INT64 / _HI_INT64: BITBLAST-proven identities
+   that collapse the (0,64) and (64,64) slices of one bytes128 SSHLL chunk
+   to word_join of 2 int32 values. Used to simplify the 128 int64 LHS
+   expressions that LEXPAND+SPLIT produces in Case A's writeback proof. *)
+
+let SSHLL_CHUNK_WORD_SUBWORD_LO_INT64 = BITBLAST_RULE
+ `word_subword
+  (word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (0,16):int16):int32) 0):int64):int128) (0,64):int64 =
+  word_join (word_sx(word_sub (word 4:int16) (word_subword c (16,16):int16)):int32)
+            (word_sx(word_sub (word 4:int16) (word_subword c (0,16):int16)):int32):int64`;;
+
+let SSHLL_CHUNK_WORD_SUBWORD_HI_INT64 = BITBLAST_RULE
+ `word_subword
+  (word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (0,64):int64) (0,16):int16):int32) 0):int64):int128) (64,64):int64 =
+  word_join (word_sx(word_sub (word 4:int16) (word_subword c (48,16):int16)):int32)
+            (word_sx(word_sub (word 4:int16) (word_subword c (32,16):int16)):int32):int64`;;
+
+(* HI-INNER variants: when the chunk uses the (64,64) inner extraction
+   (odd-indexed stack chunks, i.e., chunks at res+16j for j odd). *)
+
+let SSHLL_CHUNK_WORD_SUBWORD_LO_INT64_HIINNER = BITBLAST_RULE
+ `word_subword
+  (word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (0,16):int16):int32) 0):int64):int128) (0,64):int64 =
+  word_join (word_sx(word_sub (word 4:int16) (word_subword c (80,16):int16)):int32)
+            (word_sx(word_sub (word 4:int16) (word_subword c (64,16):int16)):int32):int64`;;
+
+let SSHLL_CHUNK_WORD_SUBWORD_HI_INT64_HIINNER = BITBLAST_RULE
+ `word_subword
+  (word_join
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword (c:int128) (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (48,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (32,16):int16):int32) 0):int64)
+   (word_join
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (16,16):int16):int32) 0)
+    (word_shl (word_sx (word_subword (word_subword
+      (word_join (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (112,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (96,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (80,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (64,16):int16):int16):int32):int64)
+       (word_join (word_join
+         (word_sub (word 4:int16) (word_subword c (48,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (32,16):int16):int16):int32)
+        (word_join (word_sub (word 4:int16) (word_subword c (16,16):int16):int16)
+         (word_sub (word 4:int16) (word_subword c (0,16):int16):int16):int32):int64)
+       :int128) (64,64):int64) (0,16):int16):int32) 0):int64):int128) (64,64):int64 =
+  word_join (word_sx(word_sub (word 4:int16) (word_subword c (112,16):int16)):int32)
+            (word_sx(word_sub (word 4:int16) (word_subword c (96,16):int16)):int32):int64`;;
+
 (* STACK_CONTENT_FROM_PARTS: combine live niblist on stack (bytes(sp, 2*LENGTH n))  *)
 (* with zero-tail (bytes(sp+2*LENGTH n, 512-2*LENGTH n) = 0) into a single          *)
 (* 512-byte stack statement as num_of_wordlist (STACK_CONTENT newlist).             *)
@@ -1925,13 +2157,14 @@ e (DBG "01 START" THEN
        DBG "04r CASE_A after bytes128 SPLIT" THEN
        ASM_REWRITE_TAC[] THEN
        DBG "04s CASE_A after ASM_REWRITE chain" THEN
-       (* Unfold STACK_CONTENT via STACK_CONTENT_LARGE: in Case A, STACK_CONTENT
-          niblist = SUB_LIST(0, 256) niblist. Already applied earlier at 04n.
-          Here we want to normalize the RHS's MAP expression. *)
-       (* Apply DERIVED_OUTPUT_LARGE to reverse: MAP f (SUB_LIST(0,256) niblist)
-          wait — we want the opposite direction, to get MAP f (STACK_CONTENT niblist) form. *)
-       DBG "04t CASE_A: goal ready for final word bitblast" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_final_form.txt" THEN
+       (* Use the chunk-level BITBLAST identities to collapse the 128 int64
+          word_subword expressions. *)
+       REWRITE_TAC[SSHLL_CHUNK_WORD_SUBWORD_LO_INT64;
+                   SSHLL_CHUNK_WORD_SUBWORD_HI_INT64;
+                   SSHLL_CHUNK_WORD_SUBWORD_LO_INT64_HIINNER;
+                   SSHLL_CHUNK_WORD_SUBWORD_HI_INT64_HIINNER] THEN
+       DBG "04t CASE_A after chunk word_subword collapse (all 4 variants)" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_chunk_collapsed_v2.txt" THEN
        CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
