@@ -1663,6 +1663,11 @@ let DBG msg = fun g ->
      if String.length s > 100 then String.sub s 0 100 else s);
   ALL_TAC g;;
 
+let PRINT_GOAL_TAC = fun g ->
+  let (_, goal) = g in
+  Printf.printf "==== GOAL ====\n%s\n==============\n%!" (string_of_term goal);
+  ALL_TAC g;;
+
 let DUMP_STATE_TAC path = fun g ->
   let (hyps, goal) = g in
   let oc = open_out path in
@@ -1883,18 +1888,25 @@ e (DBG "01 START" THEN
        (* Split each bytes128 hyp into two bytes64 hyps via READ_MEMORY_SPLIT_CONV. *)
        RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1))) THEN
        DBG "04p CASE_A after SPLIT bytes128->bytes64" THEN
-       (* Introduce a universal per-k b_k = word(...) fact. We specify:
-          - MP_TAC with SPECL fills in sp, niblist, s245;
-          - k is left universally quantified;
-          - the premise k < 64 /\ 256 <= LENGTH niblist /\ bytes(...)=... is
-            discharged by ASM_REWRITE_TAC (the relevant facts are hyps). *)
        MP_TAC(GEN `k:num` (ISPECL [`s245:armstate`; `stackpointer:int64`;
                                     `niblist:int16 list`; `k:num`]
                                    BK_FROM_STACK_GE256)) THEN
        ASM_REWRITE_TAC[] THEN
        DBG "04q CASE_A after BK_GE256 MP_TAC" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_bkge.txt" THEN
-       CHEAT_TAC]]] THEN  (* Stage 2 WIP: BK_FROM_STACK_GE256 premise introduced *)
+       (* Specialize the universal for k = 0, 1, ..., 63 and ASSUME each.
+          Precondition k < 64 is numeric; discharge via NUM_REDUCE_CONV. *)
+       DISCH_THEN(fun bk_univ ->
+         MAP_EVERY (fun i ->
+           let inst = SPEC (mk_small_numeral i) bk_univ in
+           let premise = EQT_ELIM (NUM_LT_CONV (lhand(concl inst))) in
+           ASSUME_TAC (MP inst premise)) (0--63)) THEN
+       DBG "04r CASE_A after 64 BK specializations" THEN
+       (* Normalize: 8 * k in hyps to numeric, and word_add sp (word 0) = sp. *)
+       RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_MULT_CONV)) THEN
+       RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+       DBG "04s CASE_A after normalization" THEN
+       DUMP_STATE_TAC "/tmp/eta4/case_a_after_norm.txt" THEN
+       CHEAT_TAC]]] THEN  (* Stage 2 WIP *)
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
