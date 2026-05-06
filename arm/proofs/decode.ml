@@ -631,6 +631,15 @@ let decode = new_definition `!w:int32. decode w =
     if q then SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
     else SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
 
+  | [0:1; q; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1000:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, cmode=1000, immh=0) — 16-bit element, no shift
+    let abcdefgh:(8)word = word_join abc defgh in
+    (match arm_adv_simd_expand_imm abcdefgh (word 0:(1)word) (word 0b1000) with
+     | SOME imm ->
+       if q then SOME (arm_MOVI (QREG' Rd) imm)
+       else SOME (arm_MOVI (DREG' Rd) (word_subword imm (0,64):(64)word))
+     | NONE -> NONE)
+
   | [0b0001111000100110000000:22; Rn:5; Rd:5] ->
     // FMOV (single, to general)
     SOME (arm_FMOV_FtoI (WREG' Rd) (QREG' Rn) 0 32)
