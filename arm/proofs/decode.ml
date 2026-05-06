@@ -325,9 +325,11 @@ let decode = new_definition `!w:int32. decode w =
     SOME (arm_ldst_q is_ld Rt (XREG_SP Rn) (Immediate_Offset (word (val imm12 * 16))))
   | [0b11:2; 0b111101:6; 0b0:1; is_ld; imm12:12; Rn:5; Rt:5] ->
     SOME (arm_ldst_d is_ld Rt (XREG_SP Rn) (Immediate_Offset (word (val imm12 * 8))))
-  // Post-immediate offset, size 128 only
+  // Post-immediate offset, sizes 128 and 64
   | [0b00:2; 0b1111001:7; is_ld; 0:1; imm9:9; 0b01:2; Rn:5; Rt:5] ->
     SOME (arm_ldst_q is_ld Rt (XREG_SP Rn) (Postimmediate_Offset (word_sx imm9)))
+  | [0b11:2; 0b1111000:7; is_ld; 0:1; imm9:9; 0b01:2; Rn:5; Rt:5] ->
+    SOME (arm_ldst_d is_ld Rt (XREG_SP Rn) (Postimmediate_Offset (word_sx imm9)))
   // Shifted register, size 128 only, no extensions (i.e. only UXTX)
   | [0b00:2; 0b1111001:7; is_ld; 1:1; Rm:5; 0b011:3; S; 0b10:2;  Rn:5; Rt:5] ->
     SOME (arm_ldst_q is_ld Rt (XREG_SP Rn)
@@ -356,9 +358,11 @@ let decode = new_definition `!w:int32. decode w =
     SOME (arm_ldstp_d is_ld Rt Rt2 (XREG_SP Rn)
      (Postimmediate_Offset (iword (ival imm7 * &8))))
 
-  // LDR/STR (immediate, SIMD&FP), Pre-index (has writeback)
+  // LDR/STR (immediate, SIMD&FP), Pre-index (has writeback), sizes 128 and 64
   | [0b00:2; 0b1111001:7; is_ld; 0:1; imm9:9; 0b11:2; Rn:5; Rt:5] ->
     SOME (arm_ldst_q is_ld Rt (XREG_SP Rn) (Preimmediate_Offset (word_sx imm9)))
+  | [0b11:2; 0b1111000:7; is_ld; 0:1; imm9:9; 0b11:2; Rn:5; Rt:5] ->
+    SOME (arm_ldst_d is_ld Rt (XREG_SP Rn) (Preimmediate_Offset (word_sx imm9)))
 
   // LDUR/STUR, only size 128
   | [0b00:2; 0b1111001:7; is_ld; 0:1; imm9:9; 0b00:2; Rn:5; Rt:5] ->
@@ -621,10 +625,11 @@ let decode = new_definition `!w:int32. decode w =
         else SOME (arm_USHLL_VEC (QREG' Rd) (QREG' Rn) shift esize)
     else NONE
 
-  | [0:1; 1:1; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, Q=1, immh=0)
+  | [0:1; q; 0:1; 0b011110:6; 0b0000:4; abc:3; 0b1110:4; 0b01:2; defgh:5; Rd:5] ->
+    // MOVI (op=0, cmode=1110, immh=0)
     let abcdefgh:(8)word = word_join abc defgh in
-    SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+    if q then SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+    else SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
 
   | [0b0001111000100110000000:22; Rn:5; Rd:5] ->
     // FMOV (single, to general)
@@ -798,18 +803,12 @@ let decode = new_definition `!w:int32. decode w =
     // RAX1
     SOME (arm_RAX1 (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
-  | [0:1; 1:1; 0b0011110:7; immh:4; immb:3; 0b111001:6; Rn:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, byte immediate, Q=1)
+  | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b111001:6; Rn:5; Rd:5] ->
+    // MOVI (op=0, cmode=1110, byte immediate)
     if immh = (word 0b0:(4)word) then
       let abcdefgh:(8)word = word_join immb Rn in
-      SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
-    else NONE
-
-  | [0:1; 0:1; 0b0011110:7; immh:4; immb:3; 0b111001:6; Rn:5; Rd:5] ->
-    // MOVI (op=0, cmode=1110, byte immediate, Q=0)
-    if immh = (word 0b0:(4)word) then
-      let abcdefgh:(8)word = word_join immb Rn in
-      SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
+      if q then SOME (arm_MOVI (QREG' Rd) (word_duplicate abcdefgh))
+      else SOME (arm_MOVI (DREG' Rd) (word_duplicate abcdefgh))
     else NONE
 
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b010101:6; Rn:5; Rd:5] ->
