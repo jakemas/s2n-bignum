@@ -2184,6 +2184,71 @@ let REJ_NIBBLES_ETA4_SPLIT_8 = prove
      [b0;b1;b2;b3;b4;b5;b6;b7]`))) THEN
   REWRITE_TAC[REJ_NIBBLES_ETA4_APPEND]);;
 
+(* Memory zero-padding helpers. Kept in the preamble for future use on the
+   Case B.small CHEAT (not currently used — a zero-tail invariant does not
+   work because TBL trailing bytes in the bytes128 writes are arbitrary;
+   see memory/project_eta4_final_cheat.md). *)
+
+let BYTES128_ZERO_BYTES16_ZERO = prove
+ (`!a:int64 s. read (memory :> bytes128 a) s = word 0:int128
+               ==> read (memory :> bytes (a,16)) s = 0`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[bytes128; READ_COMPONENT_COMPOSE; asword; through; read] THEN
+  DISCH_THEN(MP_TAC o AP_TERM `val:int128 -> num`) THEN
+  REWRITE_TAC[VAL_WORD_0; VAL_WORD; DIMINDEX_128] THEN
+  MP_TAC(ISPECL [`a:int64`; `16`; `read memory s`] READ_BYTES_BOUND) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  SIMP_TAC[MOD_LT] THEN ARITH_TAC);;
+
+let BYTES_CONCAT_ZERO = prove
+ (`!a:int64 m n s.
+     read (memory :> bytes (a, m)) s = 0 /\
+     read (memory :> bytes (word_add a (word m), n)) s = 0
+     ==> read (memory :> bytes (a, m + n)) s = 0`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_COMBINE] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[READ_COMPONENT_COMPOSE]) THEN
+  ASM_REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES]);;
+
+let ZERO_BYTES_SUFFIX = prove
+ (`!a:int64 N k s.
+    read (memory :> bytes (a, N)) s = 0 /\ k <= N
+    ==> read (memory :> bytes (word_add a (word k), N - k)) s = 0`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o AP_TERM `(\x:num. x DIV 2 EXP (8 * k))`) THEN
+  CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_DIV] THEN
+  REWRITE_TAC[DIV_0] THEN
+  REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN
+  DISCH_TAC THEN ASM_REWRITE_TAC[]);;
+
+let STACK_CONTENT_FROM_ZERO_TAIL = prove
+ (`!stackpointer:int64 niblist:int16 list niblen s:armstate.
+    LENGTH niblist = niblen /\ niblen <= 256 /\
+    read(memory :> bytes(stackpointer, 2 * niblen)) s = num_of_wordlist niblist /\
+    read(memory :> bytes(word_add stackpointer (word (2 * niblen)),
+                          512 - 2 * niblen)) s = 0
+    ==>
+    read(memory :> bytes(stackpointer, 512)) s =
+      num_of_wordlist (STACK_CONTENT niblist)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `STACK_CONTENT niblist = APPEND niblist (REPLICATE (256 - niblen) (word 0:int16))`
+    SUBST1_TAC THENL
+   [MP_TAC(ISPEC `niblist:int16 list` STACK_CONTENT_SMALL) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`memory:(armstate,(64)word->(8)word)component`;
+                 `s:armstate`; `stackpointer:int64`;
+                 `niblist:int16 list`;
+                 `2 * niblen:num`; `512 - 2 * niblen:num`; `256 - niblen:num`]
+                BYTES_APPEND_ZEROS) THEN
+  REWRITE_TAC[DIMINDEX_16] THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `2 * niblen + (512 - 2 * niblen) = 512` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[]);;
+
 (* CASE_B_TRUNCATE: given the FULL 1024-byte memory identity
      read bytes(res, 1024) s = num_of_wordlist(MAP f (STACK_CONTENT niblist))
    and niblen <= 256, derive the truncated identity
@@ -2219,13 +2284,17 @@ let CASE_B_TRUNCATE = prove
        (MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) (STACK_CONTENT niblist)) =
      MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) niblist`
     SUBST1_TAC THENL
-   [REWRITE_TAC[GSYM SUB_LIST_MAP; STACK_CONTENT; SUB_LIST_MIN] THEN
-    SUBGOAL_THEN `MIN niblen 256 = niblen` SUBST1_TAC THENL
-     [ASM_ARITH_TAC; ALL_TAC] THEN
+   [SUBGOAL_THEN
+      `STACK_CONTENT (niblist:int16 list) =
+       APPEND niblist (REPLICATE (256 - niblen) (word 0:int16))`
+      SUBST1_TAC THENL
+     [MP_TAC(ISPEC `niblist:int16 list` STACK_CONTENT_SMALL) THEN
+      ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
     REWRITE_TAC[MAP_APPEND] THEN
     MP_TAC(ISPECL [`MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32) niblist`;
                    `MAP (\x:int16. word_sx(word_sub (word 4:int16) x):int32)
-                        (REPLICATE 256 (word 0:int16))`;
+                        (REPLICATE (256 - niblen) (word 0:int16))`;
                    `niblen:num`] SUB_LIST_APPEND_LEFT) THEN
     ANTS_TAC THENL
      [REWRITE_TAC[LENGTH_MAP] THEN ASM_REWRITE_TAC[LE_REFL]; ALL_TAC] THEN
@@ -2583,64 +2652,17 @@ e (DBG "01 START" THEN
            REWRITE_TAC[LENGTH_MAP] THEN ASM_ARITH_TAC;
            ALL_TAC] THEN
          DBG "04l CASE_B_small after simplifications" THEN
-         (* Goal: bytes(res, 4*niblen) = num_of_wordlist(MAP f niblist)
-            Strategy: prove bytes(res, 1024) = num_of_wordlist(MAP f (STACK_CONTENT niblist))
-            then split via BYTES_EQ_NUM_OF_WORDLIST_APPEND to get our goal. *)
-         SUBGOAL_THEN
-           `read (memory :> bytes (res,1024)) s245 =
-            num_of_wordlist
-              (MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
-                   (STACK_CONTENT (niblist:int16 list)))`
-         ASSUME_TAC THENL
-          [DBG "04m1 CASE_B_small before proving universal SUBGOAL" THEN
-           DUMP_STATE_TAC "/tmp/eta4/case_b_universal.txt" THEN
-           CHEAT_TAC;
+         (* Goal: bytes(res, 4*niblen) = num_of_wordlist(MAP f niblist).
+            Use CASE_B_TRUNCATE: given the full 1024-byte identity, derive the
+            truncated niblen-prefix identity. *)
+         MATCH_MP_TAC CASE_B_TRUNCATE THEN
+         REPEAT CONJ_TAC THENL
+          [ASM_ARITH_TAC;
+           ASM_REWRITE_TAC[];
            ALL_TAC] THEN
-         DBG "04m2 CASE_B_small after universal SUBGOAL" THEN
-         (* Unfold STACK_CONTENT via STACK_CONTENT_SMALL. *)
-         SUBGOAL_THEN
-           `STACK_CONTENT (niblist:int16 list) =
-            APPEND niblist (REPLICATE (256 - niblen) (word 0:int16))`
-         ASSUME_TAC THENL
-          [MP_TAC(ISPEC `niblist:int16 list` STACK_CONTENT_SMALL) THEN
-           UNDISCH_TAC `LENGTH(niblist:int16 list) = niblen` THEN
-           DISCH_THEN SUBST1_TAC THEN ASM_REWRITE_TAC[] THEN
-           DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC;
-           ALL_TAC] THEN
-         DBG "04m3 CASE_B_small after STACK_CONTENT_SMALL" THEN
-         (* Simplify f(word 0) = word 4:int32 once and for all as a lemma. *)
-         SUBGOAL_THEN
-           `word_sx(word_sub (word 4:int16) (word 0:int16)):int32 = word 4:int32`
-         ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
-         (* Pull out the universal SUBGOAL hyp and normalize its RHS. *)
-         UNDISCH_TAC
-           `read (memory :> bytes (res,1024)) s245 =
-            num_of_wordlist
-              (MAP (\x. word_sx(word_sub (word 4:int16) x):int32)
-                   (STACK_CONTENT (niblist:int16 list)))` THEN
-         ASM_REWRITE_TAC[MAP_APPEND; MAP_REPLICATE] THEN
-         (* After ASM_REWRITE, REPLICATE's f(word 0) → word 4 via the hyp above. *)
-         BETA_TAC THEN ASM_REWRITE_TAC[] THEN
-         DBG "04m4 CASE_B_small after MAP pushed into APPEND" THEN
-         SUBGOAL_THEN `1024 = 4 * niblen + 4 * (256 - niblen)` SUBST1_TAC THENL
-          [ASM_ARITH_TAC; ALL_TAC] THEN
-         MP_TAC(ISPECL
-           [`memory:(armstate,(64)word->(8)word)component`;
-            `res:int64`; `s245:armstate`;
-            `MAP (\x. word_sx(word_sub (word 4:int16) x):int32) (niblist:int16 list)`;
-            `REPLICATE (256 - niblen) (word 4:int32)`;
-            `4 * niblen:num`; `4 * (256 - niblen):num`]
-           BYTES_EQ_NUM_OF_WORDLIST_APPEND) THEN
-         REWRITE_TAC[DIMINDEX_32; LENGTH_MAP] THEN
-         UNDISCH_TAC `LENGTH(niblist:int16 list) = niblen` THEN
-         DISCH_THEN SUBST1_TAC THEN
-         ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
-         DBG "04m5 CASE_B_small before DISCH + EQ_MP" THEN
-         DUMP_STATE_TAC "/tmp/eta4/case_b_04m5.txt" THEN
-         DISCH_THEN(fun bicond ->
-           DISCH_THEN(fun big_hyp ->
-             MP_TAC(EQ_MP bicond big_hyp))) THEN
-         STRIP_TAC THEN ASM_REWRITE_TAC[]];
+         DBG "04m1 CASE_B_small reduced to universal via CASE_B_TRUNCATE" THEN
+         DUMP_STATE_TAC "/tmp/eta4/case_b_universal.txt" THEN
+         CHEAT_TAC];
        (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
           prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
        DBG "04k CASE_A 256<=niblen" THEN
