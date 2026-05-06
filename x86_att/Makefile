@@ -140,6 +140,8 @@ OBJ = curve25519/bignum_add_p25519.o \
       generic/word_recip.o \
       mldsa/mldsa_intt.o \
       mldsa/mldsa_ntt.o \
+      mldsa/mldsa_nttunpack.o \
+      mldsa/mldsa_pointwise.o \
       mldsa/mldsa_reduce.o \
       mlkem/mlkem_basemul_k2.o \
       mlkem/mlkem_basemul_k3.o \
@@ -304,6 +306,7 @@ OBJ = curve25519/bignum_add_p25519.o \
       secp256k1/secp256k1_jmixadd_alt.o \
       sha3/sha3_keccak_f1600.o \
       sha3/sha3_keccak4_f1600.o \
+      sha3/sha3_keccak4_f1600_alt.o \
       sm2/bignum_add_sm2.o \
       sm2/bignum_cmul_sm2.o \
       sm2/bignum_cmul_sm2_alt.o \

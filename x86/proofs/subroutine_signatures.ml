@@ -4752,6 +4752,41 @@ let subroutine_signatures = [
    ])
 );
 
+("mldsa_nttunpack",
+  ([(*args*)
+     ("a", "int32_t[static 256]", (*is const?*)"false");
+   ],
+   "void",
+   [(* input buffers *)
+    ("a", "256"(* num elems *), 4(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("a", "256"(* num elems *), 4(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
+("mldsa_pointwise_x86",
+  ([(*args*)
+     ("c", "int32_t[static 256]", (*is const?*)"false");
+     ("a", "int32_t[static 256]", (*is const?*)"true");
+     ("b", "int32_t[static 256]", (*is const?*)"true");
+     ("qdata", "int32_t[static 16]", (*is const?*)"true");
+   ],
+   "void",
+   [(* input buffers *)
+    ("a", "256"(* num elems *), 4(* elem bytesize *));
+    ("b", "256"(* num elems *), 4(* elem bytesize *));
+    ("qdata", "16"(* num elems *), 4(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("c", "256"(* num elems *), 4(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
 ("mldsa_reduce",
   ([(*args*)
      ("a", "int32_t[static 256]", (*is const?*)"false");
@@ -5575,6 +5610,25 @@ let subroutine_signatures = [
   ([(*args*)
      ("a", "uint64_t[100]", (*is const?*)"false");
      ("rc", "uint64_t[24]", (*is const?*)"true");
+   ],
+   "void",
+   [(* input buffers *)
+    ("a", "100"(* num elems *), 8(* elem bytesize *));
+    ("rc", "24"(* num elems *), 8(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("a", "100"(* num elems *), 8(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
+("sha3_keccak4_f1600_alt",
+  ([(*args*)
+     ("a", "uint64_t[100]", (*is const?*)"false");
+     ("rc", "uint64_t[24]", (*is const?*)"true");
+     ("rho8", "uint64_t[4]", (*is const?*)"true");
+     ("rho56", "uint64_t[4]", (*is const?*)"true");
    ],
    "void",
    [(* input buffers *)
