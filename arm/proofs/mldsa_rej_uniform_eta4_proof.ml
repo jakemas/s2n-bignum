@@ -2467,15 +2467,21 @@ let PRINT_GOAL_TAC = fun g ->
   Printf.printf "==== GOAL ====\n%s\n==============\n%!" (string_of_term goal);
   ALL_TAC g;;
 
+(* DUMP_STATE_TAC: write the goal + hyps to a file for inspection. Best-effort:
+   silently no-op if the directory doesn't exist (e.g., in CI), so the tactic
+   remains safe to leave in committed proofs as a debugging aid. *)
+
 let DUMP_STATE_TAC path = fun g ->
   let (hyps, goal) = g in
-  let oc = open_out path in
-  output_string oc (Printf.sprintf "=== GOAL ===\n%s\n\n=== HYPS (%d) ===\n"
-    (string_of_term goal) (List.length hyps));
-  List.iter (fun (name, th) ->
-    output_string oc (Printf.sprintf "[%s]: %s\n\n" name
-      (string_of_term (concl th)))) hyps;
-  close_out oc;
+  (try
+    let oc = open_out path in
+    output_string oc (Printf.sprintf "=== GOAL ===\n%s\n\n=== HYPS (%d) ===\n"
+      (string_of_term goal) (List.length hyps));
+    List.iter (fun (name, th) ->
+      output_string oc (Printf.sprintf "[%s]: %s\n\n" name
+        (string_of_term (concl th)))) hyps;
+    close_out oc
+  with _ -> ());
   ALL_TAC g;;
 
 (* Takes ~60 seconds total *)
