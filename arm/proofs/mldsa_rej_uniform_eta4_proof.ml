@@ -2462,29 +2462,6 @@ let DBG msg = fun g ->
      if String.length s > 100 then String.sub s 0 100 else s);
   ALL_TAC g;;
 
-let PRINT_GOAL_TAC = fun g ->
-  let (_, goal) = g in
-  Printf.printf "==== GOAL ====\n%s\n==============\n%!" (string_of_term goal);
-  ALL_TAC g;;
-
-(* DUMP_STATE_TAC: write the goal + hyps to a file for inspection. Best-effort:
-   silently no-op if the directory doesn't exist (e.g., in CI), so the tactic
-   remains safe to leave in committed proofs as a debugging aid. *)
-
-let DUMP_STATE_TAC path = fun g ->
-  let (hyps, goal) = g in
-  (try
-    let oc = open_out path in
-    output_string oc (Printf.sprintf "=== GOAL ===\n%s\n\n=== HYPS (%d) ===\n"
-      (string_of_term goal) (List.length hyps));
-    List.iter (fun (name, th) ->
-      output_string oc (Printf.sprintf "[%s]: %s\n\n" name
-        (string_of_term (concl th)))) hyps;
-    close_out oc
-  with _ -> ());
-  ALL_TAC g;;
-
-(* Takes ~60 seconds total *)
 (* Key technique: ENSURES_SEQUENCE_TAC within loop body at pc+0xD8 *)
 (* to capture X12/X13 bounds before ST1 stores.                   *)
 (* ARM_VERBOSE_STEP_TAC for FMOV exposes symbolic X12/X13.        *)
@@ -2541,7 +2518,6 @@ e (DBG "01 START" THEN
    DISCH_THEN(fun th ->
      MAP_EVERY ASSUME_TAC (CONJUNCTS th)) THEN
    DBG "04f after DISCH chain" THEN
-   DUMP_STATE_TAC "/tmp/eta4/cheat1_after_disch.txt" THEN
    SUBGOAL_THEN `val(word niblen:int64) = niblen` ASSUME_TAC THENL
     [MATCH_MP_TAC VAL_WORD_EQ THEN REWRITE_TAC[DIMINDEX_64] THEN
      UNDISCH_TAC `niblen < 272` THEN ARITH_TAC; ALL_TAC] THEN
@@ -2630,7 +2606,6 @@ e (DBG "01 START" THEN
     [(* Conjunct 1: word(MIN 256 niblen) = if niblen < 256 then word niblen else word 256 *)
      COND_CASES_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC;
      (* Conjunct 2: read memory s245 = num_of_wordlist SUB_LIST. *)
-     DUMP_STATE_TAC "/tmp/eta4/cheat1_state.txt" THEN
      (* Stage 1: split on WOP disjunction — 1 CHEAT becomes 2, enabling
         independent work on each case. *)
      FIRST_X_ASSUM(DISJ_CASES_THEN ASSUME_TAC) THENL
@@ -2985,7 +2960,6 @@ e (DBG "01 START" THEN
            REWRITE_TAC[discharged])
            (List.map (fun k -> 8 * k) (0--31))) THEN
        DBG "04t2 CASE_A after halfword->EL reduction" THEN
-       DUMP_STATE_TAC "/tmp/eta4/case_a_after_04t2.txt" THEN
        (* Unfold STACK_CONTENT on RHS: in Case A, it's SUB_LIST(0,256) niblist. *)
        SUBGOAL_THEN `STACK_CONTENT (niblist:int16 list) = SUB_LIST(0, 256) niblist`
          SUBST1_TAC THENL
@@ -3346,7 +3320,6 @@ e (DBG "01 START" THEN
         equalities remain as a CHEAT (TBL correctness on the 256-entry
         eta table). *)
      DBG "14 first-half existential" THEN
-     DUMP_STATE_TAC "/tmp/eta4/cheat_tbl_state_pre.txt" THEN
      EXISTS_TAC
        `REJ_NIBBLES_ETA4
           [word_subword (loaded_d:int64) (0,8):byte;
@@ -3495,7 +3468,6 @@ e (DBG "01 START" THEN
           My SUBGOAL_THEN provided `read Q16/Q17 s29 = word(num_of_wordlist(...))`.
           ARM stepper provided `read Q16/Q17 s29 = <word_join expression>`.
           TRANS these two (after SYM on one) to get the desired equality. *)
-       (DUMP_STATE_TAC "/tmp/eta4/q16_tbl_goal.txt" THEN
         FIRST_ASSUM(fun my_hyp ->
           FIRST_ASSUM(fun arm_hyp ->
             try ACCEPT_TAC(TRANS (SYM arm_hyp) my_hyp)
@@ -3605,7 +3577,6 @@ e (DBG "01 START" THEN
    ASSUME_TAC THENL
     [REWRITE_TAC[LEFT_ADD_DISTRIB] THEN
      DBG "WB2a start" THEN
-     DUMP_STATE_TAC "/tmp/eta4/wb2_start.txt" THEN
      SUBGOAL_THEN
        `LENGTH(APPEND curlist lis0:int16 list) = curlen + len0`
      ASSUME_TAC THENL
@@ -3631,7 +3602,6 @@ e (DBG "01 START" THEN
      CONJ_TAC THENL
       [ASM_REWRITE_TAC[];
        DBG "WB2f in second CONJ" THEN
-       DUMP_STATE_TAC "/tmp/eta4/wb2_second_conj.txt" THEN
        SUBGOAL_THEN
         `read (memory :> bytes128
                (word_add stackpointer (word (2 * (curlen + len0))))) s3 =
@@ -3703,7 +3673,6 @@ e (DBG "01 START" THEN
    DBG "15y after TRY size-equality" THEN
    (* Remaining: the memory-APPEND goal. Close via the established
       curlist+lis0+lis1 memory equation (now propagated to s6 by MAYCHANGE). *)
-   DUMP_STATE_TAC "/tmp/eta4/cheat3_final.txt" THEN
    SUBGOAL_THEN
      `2 * (curlen + len0 + len1) = 2 * ((curlen + len0) + len1)`
     SUBST1_TAC THENL [ARITH_TAC; ALL_TAC] THEN
