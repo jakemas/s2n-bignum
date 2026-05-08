@@ -3470,8 +3470,8 @@ e (DBG "01 START" THEN
           TRANS these two (after SYM on one) to get the desired equality. *)
         FIRST_ASSUM(fun my_hyp ->
           FIRST_ASSUM(fun arm_hyp ->
-            try ACCEPT_TAC(TRANS (SYM arm_hyp) my_hyp)
-            with _ -> NO_TAC)))];
+            (try ACCEPT_TAC(TRANS (SYM arm_hyp) my_hyp)
+             with _ -> NO_TAC)))];
      DBG "14e after FIRST branches" THEN
      ALL_TAC] THEN
    (* Second half: ST1 stores + accumulation — 6 steps *)
