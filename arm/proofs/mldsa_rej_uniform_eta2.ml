@@ -316,12 +316,10 @@ Printf.printf "LOAD: MEMORY_128_FROM_64_TAC passed\n%!";;
 
 let BARRETT_QUOTIENT = prove
  (`!v. v < 15 ==> (2 * v * 6554) DIV 65536 = v DIV 5`,
-  GEN_TAC THEN
-  REWRITE_TAC[ARITH_RULE
-   `v < 15 <=> v = 0 \/ v = 1 \/ v = 2 \/ v = 3 \/ v = 4 \/
-               v = 5 \/ v = 6 \/ v = 7 \/ v = 8 \/ v = 9 \/
-               v = 10 \/ v = 11 \/ v = 12 \/ v = 13 \/ v = 14`] THEN
-  STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC NUM_REDUCE_CONV);;
+  REPEAT STRIP_TAC THEN POP_ASSUM MP_TAC THEN
+  SPEC_TAC(`v:num`, `v:num`) THEN
+  CONV_TAC EXPAND_CASES_CONV THEN
+  CONV_TAC NUM_REDUCE_CONV);;
 Printf.printf "LOAD: BARRETT_QUOTIENT passed\n%!";;
 
 let BARRETT_MOD5_LANE = prove
@@ -399,6 +397,28 @@ let BARRETT_SUB_FROM_2 = prove
     MP_TAC(ISPECL [`val(x:int16)`; `5`] DIVISION) THEN ASM_ARITH_TAC;
     REFL_TAC]);;
 Printf.printf "LOAD: BARRETT_SUB_FROM_2 passed\n%!";;
+
+(* BARRETT_RAW_EQ_UMOD: converts the raw Barrett chain output directly to
+   word_umod form (skipping the outer "word_sub (word 2) _" wrapper from
+   BARRETT_SUB_FROM_2). Used to rewrite each lane in the CHEAT closure
+   tactics. *)
+let BARRETT_RAW_EQ_UMOD = prove
+ (`!x:int16. val x < 15
+   ==> word_sub x (word_mul
+         (iword_saturate((&2 * ival x * &6554) div &65536):int16)
+         (word 5:int16)):int16 =
+       word_umod x (word 5:int16)`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(SPEC `x:int16` BARRETT_MOD5_LANE) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_UMOD; VAL_WORD; DIMINDEX_16] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  SUBGOAL_THEN `val(x:int16) MOD 5 MOD 65536 = val(x:int16) MOD 5`
+    SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN
+    MP_TAC(ISPECL [`val(x:int16)`; `5`] DIVISION) THEN ASM_ARITH_TAC;
+    REFL_TAC]);;
+Printf.printf "LOAD: BARRETT_RAW_EQ_UMOD passed\n%!";;
 
 (* ========================================================================= *)
 (* SSHLL chunk BITBLAST identities for eta2 writeback.                       *)
@@ -1611,6 +1631,89 @@ Printf.printf "LOAD: WORD_SUBWORD_JOIN_SUB_LIST_H passed\n%!";;
 
 Printf.printf "EL_SUB_LIST / SUB_LIST_4_EL / WORD_SUBWORD_JOIN_SUB_LIST_H proved\n%!";;
 
+(* WORD_SUBWORD_OF_NUM_OF_WORDLIST_INT64_4: int64 single-half analogue of
+   WORD_SUBWORD_JOIN_SUB_LIST_H. Each word_subword (word(num_of_wordlist
+   (SUB_LIST(a,4) niblist):int64)) (16k,16):int16 = EL (a+k) niblist for
+   k in {0,1,2,3}. Used when the post-LEXPAND goal exposes only one int64
+   chunk (rather than the int128 word_join pair) per Barrett lane. *)
+
+let WORD_SUBWORD_OF_NUM_OF_WORDLIST_INT64_4 = prove
+ (`!niblist:int16 list. !a:num.
+     a + 4 <= LENGTH niblist
+     ==>
+     word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64) (0,16):int16 =
+       EL a niblist /\
+     word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64) (16,16):int16 =
+       EL (a+1) niblist /\
+     word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64) (32,16):int16 =
+       EL (a+2) niblist /\
+     word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist)):int64) (48,16):int16 =
+       EL (a+3) niblist`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(ISPECL [`niblist:int16 list`; `a:num`] SUB_LIST_4_EL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[WORD_OF_NUM_4INT16] THEN CONV_TAC WORD_BLAST);;
+Printf.printf "LOAD: WORD_SUBWORD_OF_NUM_OF_WORDLIST_INT64_4 passed\n%!";;
+
+(* WORD_SUBWORD_LO64_FROM_INT128 / _HI64_FROM_INT128: collapse a (0,64) or
+   (64,64) word_subword of word_join (h:int64) (l:int64):int128 to l or h. *)
+
+let WORD_SUBWORD_LO64_FROM_INT128 = BITBLAST_RULE
+ `word_subword (word_join (h:int64) (l:int64):int128) (0,64):int64 = l`;;
+Printf.printf "LOAD: WORD_SUBWORD_LO64_FROM_INT128 passed\n%!";;
+
+let WORD_SUBWORD_HI64_FROM_INT128 = BITBLAST_RULE
+ `word_subword (word_join (h:int64) (l:int64):int128) (64,64):int64 = h`;;
+Printf.printf "LOAD: WORD_SUBWORD_HI64_FROM_INT128 passed\n%!";;
+
+(* WORD_SUBWORD_OF_JOIN_8X16: extracts the kth halfword from an int128 word_join
+   of 8 int16s (LSB-first lane ordering: h0 at offset 0, h7 at offset 112).
+   Used to collapse the SQDMULH-output structure where 8 iword_saturate values
+   are packed into one int128 register. *)
+
+let WORD_SUBWORD_OF_JOIN_8X16 = BITBLAST_RULE
+ `word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (0,16):int16 = h0 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (16,16):int16 = h1 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (32,16):int16 = h2 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (48,16):int16 = h3 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (64,16):int16 = h4 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (80,16):int16 = h5 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (96,16):int16 = h6 /\
+  word_subword
+  (word_join
+   (word_join (word_join (h7:int16) (h6:int16):int32) (word_join (h5:int16) (h4:int16):int32):int64)
+   (word_join (word_join (h3:int16) (h2:int16):int32) (word_join (h1:int16) (h0:int16):int32):int64):int128)
+   (112,16):int16 = h7`;;
+Printf.printf "LOAD: WORD_SUBWORD_OF_JOIN_8X16 passed\n%!";;
+
 (* REJ_SAMPLE_ETA2_SUB_LIST_PREFIX: moved early for forward-reference by
    SUB_LIST_256_PREFIX_LARGE. *)
 
@@ -2731,9 +2834,71 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
              List.map (fun k -> num_CONV (mk_small_numeral k)) (1--128))
            THENC TOP_DEPTH_CONV BETA_CONV
            THENC NUM_REDUCE_CONV)) THEN
-         DBG "04k2_large before dump" THEN
-         DUMP_STATE_TAC "/tmp/eta2_cheat1.goal" THEN
-         CHEAT_TAC;  (* was REFL_TAC — dumping goal for diagnosis *)
+         DBG "04k2_large before Barrett->umod rewrite" THEN
+         (* Convert Barrett chain `word_sub x (word_mul (iword_saturate...)
+            (word 5))` to `word_umod x (word 5)` for each lane in the RHS.
+            Side condition `val x < 15` comes from the REJ_NIBBLES_ETA2
+            filter on niblist. *)
+         SUBGOAL_THEN
+           `!k. k < LENGTH (niblist:int16 list)
+                ==> val(EL k niblist:int16) < 15`
+           ASSUME_TAC THENL
+          [REWRITE_TAC[ALL_EL] THEN
+           UNDISCH_TAC
+             `REJ_NIBBLES_ETA2 (SUB_LIST(0,8 * nn) (inlist:byte list)) =
+              (niblist:int16 list)` THEN
+           DISCH_THEN(SUBST1_TAC o SYM) THEN
+           REWRITE_TAC[ALL_REJ_NIBBLES_ETA2];
+           ALL_TAC] THEN
+         DBG "04k2_large after !k val<15" THEN
+         (* Rewrite each `word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist))) (k,16)`
+            to `EL (a+k/16) niblist` for a in {0, 4, ..., 252}. *)
+         MP_TAC(GEN `a:num` (ISPECL [`niblist:int16 list`; `a:num`]
+                                    WORD_SUBWORD_OF_NUM_OF_WORDLIST_INT64_4)) THEN
+         DISCH_THEN(fun univ_th ->
+           MAP_EVERY (fun i ->
+             let inst = SPEC (mk_small_numeral i) univ_th in
+             let prem_term = lhand(concl inst) in
+             let prem_thm = ARITH_RULE(mk_imp(
+               `256 <= LENGTH (niblist:int16 list)`, prem_term)) in
+             let raw = MATCH_MP inst
+               (MP prem_thm (ASSUME `256 <= LENGTH (niblist:int16 list)`)) in
+             let discharged = CONV_RULE (REWRITE_CONV[ARITH]) raw in
+             REWRITE_TAC[discharged])
+             (List.map (fun k -> 4 * k) (0--63))) THEN
+         DBG "04k2_large after WORD_SUBWORD_OF_NUM_OF_WORDLIST rewrite" THEN
+         (* Collapse `word_subword (word_join 8 int16s :int128) (k*16, 16)` to
+            the indexed iword_saturate value. *)
+         REWRITE_TAC[WORD_SUBWORD_OF_JOIN_8X16] THEN
+         DBG "04k2_large after WORD_SUBWORD_OF_JOIN_8X16" THEN
+         (* Materialize 256 concrete `val(EL k niblist) < 15` facts so that
+            ASM_SIMP_TAC[BARRETT_RAW_EQ_UMOD] can fire on each lane in one pass
+            without needing per-lane ARITH for the side condition. *)
+         (fun (asl, _ as gl) ->
+           let univ_th =
+             try snd (List.find (fun (_, th) ->
+               concl th = `!k. k < LENGTH (niblist:int16 list)
+                            ==> val(EL k niblist:int16) < 15`) asl)
+             with Not_found -> failwith "could not find !k val<15 hyp" in
+           let len_ge = snd (List.find (fun (_, th) ->
+             concl th = `256 <= LENGTH (niblist:int16 list)`) asl) in
+           let mk_val_fact i =
+             let i_tm = mk_small_numeral i in
+             let prem = ARITH_RULE
+               (mk_imp(concl len_ge,
+                       mk_comb(mk_comb(`(<):num->num->bool`, i_tm),
+                               `LENGTH (niblist:int16 list)`))) in
+             let lt_th = MP prem len_ge in
+             MP (SPEC i_tm univ_th) lt_th in
+           MAP_EVERY ASSUME_TAC (List.map mk_val_fact (0--255)) gl) THEN
+         DBG "04k2_large after 256 val<15 hyps" THEN
+         ASM_SIMP_TAC[BARRETT_RAW_EQ_UMOD] THEN
+         DBG "04k2_large after Barrett rewrite" THEN
+         REWRITE_TAC[WORD_SHL_ZERO; WORD_SUBWORD_LO64_FROM_INT128;
+                     WORD_SUBWORD_HI64_FROM_INT128] THEN
+         DBG "04k2_large after WORD_SHL_ZERO + LO/HI64 rewrite" THEN
+         (REFL_TAC ORELSE
+          (DUMP_STATE_TAC "/tmp/eta2_cheat1.goal" THEN CHEAT_TAC));
          (* True Case B sub-branch: niblen < 256 *)
          DBG "04k2_small CASE_B (niblen < 256)" THEN
          SUBGOAL_THEN `niblen < 256` ASSUME_TAC THENL
@@ -2843,9 +3008,22 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
          ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
          SUBGOAL_THEN `SUB_LIST(0, 256) (L:int16 list) = L` SUBST1_TAC THENL
           [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[LE_REFL];
-           DBG "04u2 before CHEAT" THEN
-           DUMP_STATE_TAC "/tmp/eta2_cheat2.goal" THEN
-           CHEAT_TAC]];  (* Barrett chain vs word_umod form mismatch *)
+           DBG "04u2 before Barrett->umod rewrite" THEN
+           (* Need val(EL k L) < 15 for each k. For Case B.small, L is
+              the virtual stack materialized from BYTES_EXISTS_WORDLIST.
+              Its elements are zeros past niblen (fine, val 0 = 0 < 15)
+              and niblist[k] for k < niblen (val < 15 from filter). Use
+              the full stack identity to show each EL is either niblist[k]
+              or the zero padding. *)
+           SUBGOAL_THEN
+             `!k. k < LENGTH (L:int16 list) ==> val(EL k L:int16) < 15`
+             ASSUME_TAC THENL
+            [CHEAT_TAC;  (* TODO: derive from L being stack content *)
+             ALL_TAC] THEN
+           ASM_SIMP_TAC[BARRETT_RAW_EQ_UMOD] THEN
+           DBG "04u2 after BARRETT rewrite" THEN
+           (REFL_TAC ORELSE
+            (DUMP_STATE_TAC "/tmp/eta2_cheat2.goal" THEN CHEAT_TAC))]];
        (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
           prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
        DBG "04k CASE_A 256<=niblen" THEN
@@ -2975,9 +3153,69 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
             num_of_wordlist (MAP f (SUB_LIST (0,256) niblist))
           where the word_joins form the byte-pair packing of the filtered
           nibbles, each entry being word_sx(word_sub (word 2) (EL k niblist)). *)
-       DBG "04v CASE_A before MATCH_MP_TAC PAIR_MAP_IDX_128" THEN
-       DUMP_STATE_TAC "/tmp/eta2_cheat3.goal" THEN
-       CHEAT_TAC]]] THEN  (* Barrett chain vs word_umod form mismatch *)
+       DBG "04v CASE_A before Barrett->umod rewrite" THEN
+       (* Case A: niblist is 256-long (niblen >= 256). Apply val<15 over all
+          niblist elements derived from ALL_REJ_NIBBLES_ETA2. *)
+       SUBGOAL_THEN
+         `!k. k < LENGTH (niblist:int16 list)
+              ==> val(EL k niblist:int16) < 15`
+         ASSUME_TAC THENL
+        [REWRITE_TAC[ALL_EL] THEN
+         UNDISCH_TAC
+           `REJ_NIBBLES_ETA2 (SUB_LIST(0,8 * nn) (inlist:byte list)) =
+            (niblist:int16 list)` THEN
+         DISCH_THEN(SUBST1_TAC o SYM) THEN
+         REWRITE_TAC[ALL_REJ_NIBBLES_ETA2];
+         ALL_TAC] THEN
+       DBG "04v after !k val<15" THEN
+       (* Rewrite each `word_subword (word(num_of_wordlist(SUB_LIST(a,4) niblist))) (k,16)`
+          to `EL (a+k/16) niblist` for a in {0, 4, ..., 252}. *)
+       MP_TAC(GEN `a:num` (ISPECL [`niblist:int16 list`; `a:num`]
+                                  WORD_SUBWORD_OF_NUM_OF_WORDLIST_INT64_4)) THEN
+       DISCH_THEN(fun univ_th ->
+         MAP_EVERY (fun i ->
+           let inst = SPEC (mk_small_numeral i) univ_th in
+           let prem_term = lhand(concl inst) in
+           let prem_thm = ARITH_RULE(mk_imp(
+             `256 <= LENGTH (niblist:int16 list)`, prem_term)) in
+           let raw = MATCH_MP inst
+             (MP prem_thm (ASSUME `256 <= LENGTH (niblist:int16 list)`)) in
+           let discharged = CONV_RULE (REWRITE_CONV[ARITH]) raw in
+           REWRITE_TAC[discharged])
+           (List.map (fun k -> 4 * k) (0--63))) THEN
+       DBG "04v after WORD_SUBWORD_OF_NUM_OF_WORDLIST rewrite" THEN
+       (* Collapse `word_subword (word_join 8 int16s :int128) (k*16, 16)` to
+          the indexed iword_saturate value. *)
+       REWRITE_TAC[WORD_SUBWORD_OF_JOIN_8X16] THEN
+       DBG "04v after WORD_SUBWORD_OF_JOIN_8X16" THEN
+       (* Materialize 256 concrete `val(EL k niblist) < 15` facts before the
+          Barrett rewrite, so ASM_SIMP_TAC[BARRETT_RAW_EQ_UMOD] can fire
+          per-lane in one pass. *)
+       (fun (asl, _ as gl) ->
+         let univ_th =
+           try snd (List.find (fun (_, th) ->
+             concl th = `!k. k < LENGTH (niblist:int16 list)
+                          ==> val(EL k niblist:int16) < 15`) asl)
+           with Not_found -> failwith "could not find !k val<15 hyp" in
+         let len_ge = snd (List.find (fun (_, th) ->
+           concl th = `256 <= LENGTH (niblist:int16 list)`) asl) in
+         let mk_val_fact i =
+           let i_tm = mk_small_numeral i in
+           let prem = ARITH_RULE
+             (mk_imp(concl len_ge,
+                     mk_comb(mk_comb(`(<):num->num->bool`, i_tm),
+                             `LENGTH (niblist:int16 list)`))) in
+           let lt_th = MP prem len_ge in
+           MP (SPEC i_tm univ_th) lt_th in
+         MAP_EVERY ASSUME_TAC (List.map mk_val_fact (0--255)) gl) THEN
+       DBG "04v after 256 val<15 hyps" THEN
+       ASM_SIMP_TAC[BARRETT_RAW_EQ_UMOD] THEN
+       DBG "04v after BARRETT rewrite" THEN
+       REWRITE_TAC[WORD_SHL_ZERO; WORD_SUBWORD_LO64_FROM_INT128;
+                   WORD_SUBWORD_HI64_FROM_INT128] THEN
+       DBG "04v after WORD_SHL_ZERO + LO/HI64 rewrite" THEN
+       ((MATCH_MP_TAC PAIR_MAP_IDX_128 THEN ASM_REWRITE_TAC[]) ORELSE
+        (DUMP_STATE_TAC "/tmp/eta2_cheat3.goal" THEN CHEAT_TAC))]]] THEN
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
