@@ -2984,8 +2984,7 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
          REWRITE_TAC[WORD_SHL_ZERO; WORD_SUBWORD_LO64_FROM_INT128;
                      WORD_SUBWORD_HI64_FROM_INT128] THEN
          DBG "04k2_large after WORD_SHL_ZERO + LO/HI64 rewrite" THEN
-         (REFL_TAC ORELSE
-          (DUMP_STATE_TAC "/tmp/eta2_cheat1.goal" THEN CHEAT_TAC));
+         REFL_TAC;
          (* True Case B sub-branch: niblen < 256 *)
          DBG "04k2_small CASE_B (niblen < 256)" THEN
          SUBGOAL_THEN `niblen < 256` ASSUME_TAC THENL
@@ -3143,8 +3142,7 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
            DISCH_THEN(SUBST1_TAC o SYM) THEN
            REWRITE_TAC[WORD_SHL_ZERO; WORD_SUBWORD_LO64_FROM_INT128;
                        WORD_SUBWORD_HI64_FROM_INT128] THEN
-           (REFL_TAC ORELSE
-            (DUMP_STATE_TAC "/tmp/eta2_cheat2.goal" THEN CHEAT_TAC))]];
+           REFL_TAC]];
        (* Case A: 256 <= niblen. Simplify MIN to 256, then rewrite RHS via
           prefix lemma to SUB_LIST(0,256)(MAP f niblist). *)
        DBG "04k CASE_A 256<=niblen" THEN
@@ -3335,8 +3333,7 @@ let MLDSA_REJ_UNIFORM_ETA2_CORRECT = prove
        REWRITE_TAC[WORD_SHL_ZERO; WORD_SUBWORD_LO64_FROM_INT128;
                    WORD_SUBWORD_HI64_FROM_INT128] THEN
        DBG "04v after WORD_SHL_ZERO + LO/HI64 rewrite" THEN
-       ((MATCH_MP_TAC PAIR_MAP_IDX_128 THEN ASM_REWRITE_TAC[]) ORELSE
-        (DUMP_STATE_TAC "/tmp/eta2_cheat3.goal" THEN CHEAT_TAC))]]] THEN
+       MATCH_MP_TAC PAIR_MAP_IDX_128 THEN ASM_REWRITE_TAC[]]]] THEN
 
  (* === WOP: find smallest N where loop exits === *)
  (* N is the first iteration where either buffer exhausted or 256 samples *)
