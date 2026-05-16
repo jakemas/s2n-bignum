@@ -432,7 +432,12 @@ let ABBREV_TRACE_TAC (stored_abbrevs:thm list ref)=
     let read_events = filter (fun (_,th) ->
       can (term_match [] pat) (concl th)) asl in
     match read_events with
-    | [] -> failwith "No read events"
+    | [] ->
+      (* No `read events s = ...` assumption found. This happens when the
+         last chunk consisted entirely of pure register operations that don't
+         extend the events trace. Since events are unchanged from the last
+         abbreviation, no new abbreviation is needed; just continue. *)
+      ALL_TAC (asl,w)
     | (_,read_event_th)::_ ->
       let r = rhs (concl read_event_th) in
       (if is_comb r then
