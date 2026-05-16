@@ -4444,11 +4444,122 @@ let MLDSA_REJ_UNIFORM_ETA2_MEMSAFE = prove
       (* Subgoal 3: Loop body preserves invariant *)
       CHEAT_TAC;
 
-      (* Subgoal 4: Back edge — 2 ARM steps from pc+248 to pc+108 *)
-      CHEAT_TAC;
+      (* Subgoal 4: Back edge — 2 ARM steps from pc+244 to pc+104 *)
+      X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+      CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+      ENSURES_INIT_TAC "s0" THEN
+      STRIP_EXISTS_ASSUM_TAC THEN
+      SUBGOAL_THEN `8 <= val(word_sub (word buflen:int64) (word(8 * i)))`
+      ASSUME_TAC THENL
+       [SUBGOAL_THEN `8 * (i + 1) <= buflen` ASSUME_TAC THENL
+         [FIRST_X_ASSUM(MP_TAC o SPEC `i:num`) THEN
+          UNDISCH_TAC `i < N:num` THEN ARITH_TAC; ALL_TAC] THEN
+        SUBGOAL_THEN `8 * i < 2 EXP 64` ASSUME_TAC THENL
+         [UNDISCH_TAC `buflen < 2 EXP 64` THEN
+          UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+        VAL_INT64_TAC `8 * i` THEN ASM_REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
+        UNDISCH_TAC `8 * (i + 1) <= buflen` THEN ARITH_TAC; ALL_TAC] THEN
+      ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (1--2) THEN
+      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+      DISCHARGE_MEMSAFE_ASM_TAC;
 
-      (* Subgoal 5: Post-loop exit — from pc+248 to pc+0xfc *)
-      CHEAT_TAC];
+      (* Subgoal 5: Post-loop exit — from pc+0xf4 to pc+0xfc.
+         3-way case analysis based on niblen and X2 (=word_sub buflen (8*N)). *)
+      CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+      ABBREV_TAC `niblen = LENGTH(REJ_NIBBLES_ETA2(SUB_LIST(0,8*N) inlist):int16 list)` THEN
+      SUBGOAL_THEN `niblen < 272` ASSUME_TAC THENL
+       [EXPAND_TAC "niblen" THEN
+        MATCH_MP_TAC NIBLEN_BOUND_FROM_WOP THEN
+        ASM_REWRITE_TAC[] THEN
+        X_GEN_TAC `mm:num` THEN DISCH_TAC THEN
+        FIRST_X_ASSUM(MP_TAC o SPEC `mm:num`) THEN
+        ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      VAL_INT64_TAC `niblen:num` THEN
+      ASM_CASES_TAC `256 <= niblen` THENL
+       [ASM_CASES_TAC `8 <= val(word_sub (word buflen:int64) (word(8 * N)))` THENL
+         [(* 256<=niblen, X2>=8: split via ENSURES_SEQUENCE at pc+0x68 *)
+          ENSURES_SEQUENCE_TAC `pc + 0x68`
+            `\s. aligned_bytes_loaded s (word pc) mldsa_rej_uniform_eta2_mc /\
+                 read PC s = word(pc + 0x68) /\
+                 read X0 s = res /\ read X4 s = word 256 /\
+                 read X8 s = stackpointer /\
+                 read X9 s = word niblen /\
+                 read (memory :> bytes (stackpointer,2 * niblen)) s =
+                 num_of_wordlist (REJ_NIBBLES_ETA2(SUB_LIST(0,8*N) inlist):int16 list) /\
+                 ALL (nonoverlapping (res,1024)) [(word pc,372); (stackpointer,576)] /\
+                 (?e_acc. read events s = APPEND e_acc e /\
+                          memaccess_inbounds e_acc
+                            [buf,buflen; table,4096; stackpointer,576]
+                            [stackpointer,576; res,1024])` THEN
+          CONJ_TAC THENL
+           [(* pc+0xf4 -> pc+0x68 *)
+            ENSURES_INIT_TAC "s0" THEN
+            STRIP_EXISTS_ASSUM_TAC THEN
+            ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (1--2) THEN
+            ENSURES_FINAL_STATE_TAC THEN
+            REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+            DISCHARGE_MEMSAFE_ASM_TAC;
+            (* pc+0x68 -> pc+0xfc *)
+            ENSURES_INIT_TAC "s0" THEN
+            STRIP_EXISTS_ASSUM_TAC THEN
+            SUBGOAL_THEN `256 <= val(word niblen:int64)` ASSUME_TAC THENL
+             [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+              SUBGOAL_THEN `niblen MOD 2 EXP 64 = niblen` SUBST1_TAC THENL
+               [MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `niblen < 272` THEN
+                ARITH_TAC;
+                ASM_REWRITE_TAC[]];
+              ALL_TAC] THEN
+            ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (1--2) THEN
+            ENSURES_FINAL_STATE_TAC THEN
+            REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+            CONJ_TAC THENL
+             [EXISTS_TAC `N:num` THEN ASM_REWRITE_TAC[] THEN
+              UNDISCH_TAC `niblen < 272` THEN ARITH_TAC;
+              DISCHARGE_MEMSAFE_ASM_TAC]];
+          (* 256<=niblen, X2<8: 2 ARM steps directly *)
+          ENSURES_INIT_TAC "s0" THEN
+          STRIP_EXISTS_ASSUM_TAC THEN
+          ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (1--2) THEN
+          ENSURES_FINAL_STATE_TAC THEN
+          REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+          CONJ_TAC THENL
+           [EXISTS_TAC `N:num` THEN ASM_REWRITE_TAC[] THEN
+            UNDISCH_TAC `niblen < 272` THEN ARITH_TAC;
+            DISCHARGE_MEMSAFE_ASM_TAC]];
+        (* ~(256<=niblen): buffer-exhausted case *)
+        SUBGOAL_THEN `buflen < 8 * (N + 1)` ASSUME_TAC THENL
+         [FIRST_X_ASSUM(DISJ_CASES_THEN ASSUME_TAC) THEN ASM_REWRITE_TAC[] THEN
+          UNDISCH_TAC `~(256 <= niblen)` THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+        SUBGOAL_THEN `8 * N <= buflen` ASSUME_TAC THENL
+         [FIRST_X_ASSUM(MP_TAC o SPEC `N - 1`) THEN
+          UNDISCH_TAC `0 < N` THEN ARITH_TAC; ALL_TAC] THEN
+        SUBGOAL_THEN `8 * N = buflen` ASSUME_TAC THENL
+         [MP_TAC(ASSUME `8 divides buflen`) THEN
+          REWRITE_TAC[divides] THEN
+          DISCH_THEN(X_CHOOSE_TAC `d:num`) THEN ASM_REWRITE_TAC[] THEN
+          UNDISCH_TAC `buflen < 8 * (N + 1)` THEN ASM_REWRITE_TAC[] THEN
+          UNDISCH_TAC `8 * N <= buflen` THEN ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[GSYM MULT_ASSOC; LT_MULT_LCANCEL; LE_MULT_LCANCEL] THEN
+          CONV_TAC NUM_REDUCE_CONV THEN ARITH_TAC; ALL_TAC] THEN
+        SUBGOAL_THEN `SUB_LIST(0,buflen) inlist = inlist:byte list`
+          (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+         [MATCH_MP_TAC SUB_LIST_REFL THEN ASM_REWRITE_TAC[LE_REFL]; ALL_TAC] THEN
+        ASM_REWRITE_TAC[] THEN
+        SUBGOAL_THEN `~(8 <= val(word_sub (word buflen:int64) (word buflen)))`
+          ASSUME_TAC THENL
+         [REWRITE_TAC[WORD_SUB_REFL; VAL_WORD_0] THEN ARITH_TAC; ALL_TAC] THEN
+        ENSURES_INIT_TAC "s0" THEN
+        STRIP_EXISTS_ASSUM_TAC THEN
+        ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (1--2) THEN
+        ENSURES_FINAL_STATE_TAC THEN
+        REWRITE_TAC[ALL] THEN ASM_REWRITE_TAC[] THEN
+        CONJ_TAC THENL
+         [EXISTS_TAC `N:num` THEN ASM_REWRITE_TAC[] THEN
+          CONJ_TAC THENL
+           [UNDISCH_TAC `niblen < 272` THEN ARITH_TAC;
+            DISJ1_TAC THEN ASM_REWRITE_TAC[]];
+          DISCHARGE_MEMSAFE_ASM_TAC]]];
 
     (* === Writeback phase (pc+0xfc to pc+364): unrolled, fixed sequence ===
        Mirrors CORRECT writeback prefix: ENSURES_INIT, choose nn, ABBREV
