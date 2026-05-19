@@ -5237,8 +5237,8 @@ let MLDSA_REJ_UNIFORM_ETA2_MEMSAFE = prove
     RULE_ASSUM_TAC(CONV_RULE WORD_REDUCE_CONV) THEN
     ARM_STEPS_TAC MLDSA_REJ_UNIFORM_ETA2_EXEC (281--313) THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-    DISCHARGE_MEMSAFE_ASM_TAC]);;
-Printf.printf "LOAD: MLDSA_REJ_UNIFORM_ETA2_MEMSAFE passed (with 1 CHEAT)\n%!";;
+    DISCHARGE_MEMSAFE_TAC]);;
+Printf.printf "LOAD: MLDSA_REJ_UNIFORM_ETA2_MEMSAFE passed\n%!";;
 
 (* ------------------------------------------------------------------------- *)
 (* The subroutine memory safety theorem.                                     *)
