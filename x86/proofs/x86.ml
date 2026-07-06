@@ -4128,6 +4128,8 @@ let REGISTER_ALIASES =
   r8;   r9;  r10;  r11;  r12;  r13;  r14;  r15;
   eax; ecx; edx; ebx; esp; ebp; esi; edi;
   r8d; r9d; r10d; r11d; r12d; r13d; r14d; r15d;
+  r8w; r9w; r10w; r11w; r12w; r13w; r14w; r15w;
+  r8b; r9b; r10b; r11b; r12b; r13b; r14b; r15b;
   ax; cx; dx; bx; sp; bp; si; di; ah;
   al; ch; cl; dh; dl; bh; bl; spl; bpl; sil; dil;
   xmm0; xmm1; xmm2; xmm3; xmm4; xmm5; xmm6; xmm7;
