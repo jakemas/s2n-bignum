@@ -1077,10 +1077,16 @@ extern void mldsa_decompose_88(int32_t a1[S2N_BIGNUM_STATIC 256], int32_t a0[S2N
 // Unpack packed z polynomial for ML-DSA (GAMMA1 = 2^17, parameter set 44)
 // Inputs b[576], t[64] (bytes); output r[256] (signed 32-bit words)
 extern void mldsa_polyz_unpack_17_arm(int32_t r[S2N_BIGNUM_STATIC 256], const uint8_t b[S2N_BIGNUM_STATIC 576], const uint8_t t[S2N_BIGNUM_STATIC 64]);
+// x86 variant unpacks directly from the byte buffer (no shuffle table argument)
+// Input b[576] (bytes); output r[256] (signed 32-bit words)
+extern void mldsa_polyz_unpack_17_x86(int32_t r[S2N_BIGNUM_STATIC 256], const uint8_t b[S2N_BIGNUM_STATIC 576]);
 
 // Unpack packed z polynomial for ML-DSA (GAMMA1 = 2^19, parameter sets 65/87)
 // Inputs b[640], t[64] (bytes); output r[256] (signed 32-bit words)
 extern void mldsa_polyz_unpack_19_arm(int32_t r[S2N_BIGNUM_STATIC 256], const uint8_t b[S2N_BIGNUM_STATIC 640], const uint8_t t[S2N_BIGNUM_STATIC 64]);
+// x86 variant unpacks directly from the byte buffer (no shuffle table argument)
+// Input b[640] (bytes); output r[256] (signed 32-bit words)
+extern void mldsa_polyz_unpack_19_x86(int32_t r[S2N_BIGNUM_STATIC 256], const uint8_t b[S2N_BIGNUM_STATIC 640]);
 
 // Canonical reduction of polynomial coefficients for ML-DSA
 // Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words)
