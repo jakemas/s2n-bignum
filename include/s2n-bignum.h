@@ -1083,6 +1083,8 @@ extern void mldsa_polyz_unpack_17_arm(int32_t r[S2N_BIGNUM_STATIC 256], const ui
 extern void mldsa_polyz_unpack_19_arm(int32_t r[S2N_BIGNUM_STATIC 256], const uint8_t b[S2N_BIGNUM_STATIC 640], const uint8_t t[S2N_BIGNUM_STATIC 64]);
 
 // Canonical reduction of polynomial coefficients for ML-DSA
+// Result is centered, -6283009 <= r <= 6283008, and congruent mod 8380417
+// Assumes each coefficient is <= 0x7fbfffff (else the reduction overflows)
 // Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words)
 extern void mldsa_reduce(int32_t a[S2N_BIGNUM_STATIC 256]);
 
