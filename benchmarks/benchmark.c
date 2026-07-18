@@ -1135,14 +1135,14 @@ void call_mldsa_pointwise(void) repeat(mldsa_pointwise_x86((int32_t*)b0,(int32_t
 void call_mldsa_pointwise_acc_l4(void) repeat(mldsa_pointwise_acc_l4_x86((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2,mldsa_avx2_qdata))
 void call_mldsa_pointwise_acc_l5(void) repeat(mldsa_pointwise_acc_l5_x86((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2,mldsa_avx2_qdata))
 void call_mldsa_pointwise_acc_l7(void) repeat(mldsa_pointwise_acc_l7_x86((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2,mldsa_avx2_qdata))
-void call_mldsa_poly_use_hint_88(void) {}
+void call_mldsa_poly_use_hint_88(void) repeat(mldsa_poly_use_hint_88((int32_t*)b0,(const int32_t*)b1))
 void call_mldsa_chknorm(void) repeat(mldsa_chknorm((const int32_t*)b0,42))
 void call_mldsa_decompose_32(void) repeat(mldsa_decompose_32((int32_t*)b0,(int32_t*)b1))
 void call_mldsa_decompose_88(void) repeat(mldsa_decompose_88((int32_t*)b0,(int32_t*)b1))
 void call_mldsa_polyz_unpack_17(void) repeat(mldsa_polyz_unpack_17_x86((int32_t*)b0,(const uint8_t*)b1))
 void call_mldsa_polyz_unpack_19(void) repeat(mldsa_polyz_unpack_19_x86((int32_t*)b0,(const uint8_t*)b1))
 void call_mldsa_reduce(void) repeat(mldsa_reduce((int32_t*)b0))
-void call_mldsa_poly_use_hint_32(void) {}
+void call_mldsa_poly_use_hint_32(void) repeat(mldsa_poly_use_hint_32((int32_t*)b0,(const int32_t*)b1))
 void call_mldsa_rej_uniform(void) {}
 void call_mldsa_rej_uniform_eta2(void) {}
 void call_mldsa_rej_uniform_eta4(void) {}
@@ -1677,8 +1677,8 @@ int main(int argc, char *argv[])
   timingtest(all,"mldsa_pointwise_acc_l4",call_mldsa_pointwise_acc_l4);
   timingtest(all,"mldsa_pointwise_acc_l5",call_mldsa_pointwise_acc_l5);
   timingtest(all,"mldsa_pointwise_acc_l7",call_mldsa_pointwise_acc_l7);
-  timingtest(arm,"mldsa_poly_use_hint_32",call_mldsa_poly_use_hint_32);
-  timingtest(arm,"mldsa_poly_use_hint_88",call_mldsa_poly_use_hint_88);
+  timingtest(all,"mldsa_poly_use_hint_32",call_mldsa_poly_use_hint_32);
+  timingtest(all,"mldsa_poly_use_hint_88",call_mldsa_poly_use_hint_88);
   timingtest(all,"mldsa_chknorm",call_mldsa_chknorm);
   timingtest(all,"mldsa_decompose_32",call_mldsa_decompose_32);
   timingtest(all,"mldsa_decompose_88",call_mldsa_decompose_88);
