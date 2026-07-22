@@ -761,8 +761,7 @@ let COEFF_FROM_BYTES = prove
 (* REJ_SAMPLE algebra.                                                       *)
 (* ========================================================================= *)
 
-(* Lemmas that defs.ml / step*.ml need but which weren't in the checkpoint loader.
-   Extracted verbatim from mldsa_rej_uniform.ml. Load before defs.ml. *)
+(* Supporting algebraic lemmas about REJ_SAMPLE and the rejection predicate. *)
 
 (* POPCNT of VMOVMSKPS sign-bit mask = LENGTH(FILTER) — 256-case brute force *)
 let POPCNT_EQ_LENGTH_FILTER = prove
@@ -1276,18 +1275,13 @@ let ACCEPT_REJ_SAMPLE_SINGLETON = prove
 
 (* ========================================================================= *)
 
-(* PIVOT_VAL_EQ: key pivot lemma for the REJECT branch of scalar_body_lemma.
+(* PIVOT_VAL_EQ: key pivot lemma for the REJECT branch of SCALAR_BODY_LEMMA.
 
    Derived from ACCEPT_REJ_SAMPLE_SINGLETON by dropping the `val r8val < 8380417`
-   premise and returning only the first conjunct.
-
-   Rationale: the inline derivation of this fact in scalar_body_lemma.ml:816-858
-   took 40+ minutes because it rewrites 217 x86-state assumptions via
-   VAL_WORD_ZX_GEN + NUM_REDUCE_CONV. Proving it as a top-level lemma with
-   WORD_BLAST normalizers runs in ~1s, then MP_TAC/ANTS_TAC inline is ~0.2s.
-
-   Depends on ACCEPT_REJ_SAMPLE_SINGLETON, BYTE_BRIDGE_3BYTES_2STATE (from
-   scalar_body_preamble.ml). *)
+   premise and returning only the first conjunct. Proving it as a top-level
+   lemma (rather than deriving it inline) keeps SCALAR_BODY_LEMMA fast, since
+   the inline derivation rewrites the full x86-state assumption set via
+   VAL_WORD_ZX_GEN + NUM_REDUCE_CONV. *)
 
 let stmt =
   let accept_concl = concl ACCEPT_REJ_SAMPLE_SINGLETON in
@@ -1414,26 +1408,6 @@ let VAL_RCX_ADD3_ZX = prove
 (* ========================================================================= *)
 (* SCALAR_BODY_LEMMA (per-iteration specification).                          *)
 (* ========================================================================= *)
-
-(* scalar_body_lemma.ml — proof of the scalar body subgoal.
-   Main proof uses MATCH_MP_TAC SCALAR_BODY_LEMMA; the wiring is verified
-   working at mldsa_rej_uniform.ml:1939.
-
-   Status: structural proof loads in ~15s (down from 1hr) after extracting
-   PIVOT_VAL_EQ.
-
-   Dependencies (must be loaded BEFORE this file):
-   - pivot_lemma.ml          — PIVOT_VAL_EQ
-   - memory_conjunct_lemma.ml — MEMORY_CONJUNCT_CLOSURE
-   - case_b_close.ml         — VAL_RCX_ADD3, VAL_RCX_ADD3_ZX
-
-   3 remaining CHEAT_TACs (all in the ACCEPT i+1=K offset-exit arm):
-   - count-exit branch: curlen+1=256 case (trivial closure, similar to Case A)
-   - Case A: offset-exit with curlen+1=256
-   - Case B: offset-exit with curlen+1<256 (the interesting case —
-     interactively validated via case_b_script.ml with 0 CHEATs,
-     but file-load has subtle seqapply interaction — see reject_progress.md)
-*)
 
 (* Extract 3 bytes of memory at offset 3*j from a 3*n-byte buffer (the natural
    byte size for a (24 word)list of length n: 24*n bits = 3*n bytes). *)
@@ -2143,7 +2117,7 @@ let SCALAR_BODY_LEMMA = prove
     SUBGOAL_THEN `8 * N + i < 280` ASSUME_TAC THENL
      [UNDISCH_TAC `24 * N + 3 * i <= 837` THEN ARITH_TAC; ALL_TAC] THEN
     (* Pivot lemma: val r8val equals the 23 low bits of the list element.
-       Use the extracted PIVOT_VAL_EQ top-level lemma for fast application. *)
+       Use the PIVOT_VAL_EQ top-level lemma for fast application. *)
     SUBGOAL_THEN `1 * val(word (24 * N + 3 * i):int64) = 3 * (8 * N + i) /\
                   1 * val(word (24 * N + 3 * i):int64) + 2 = 3 * (8 * N + i) + 2`
       STRIP_ASSUME_TAC THENL
@@ -3991,6 +3965,134 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
               with _ -> failwith "memory finalize failed")]]]]]);;
 
 (* ========================================================================= *)
+(* Coefficient bound on the abstract output list                             *)
+(* SUB_LIST (0,256) (REJ_SAMPLE inlist). Every sampled coefficient is a      *)
+(* valid ML-DSA element (val < q = 8380417). Proved directly from the        *)
+(* FILTER shape of REJ_SAMPLE. Callers can specialize via EL / MEM_EL.       *)
+(* ========================================================================= *)
+
+let REJ_SAMPLE_COEFF_BOUND = prove
+ (`!(inlist:(24 word)list) c.
+      MEM c (SUB_LIST(0,256) (REJ_SAMPLE inlist)) ==> val c < 8380417`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  SUBGOAL_THEN `MEM (c:int32) (REJ_SAMPLE(inlist:(24 word)list))` MP_TAC THENL
+   [MP_TAC(ISPECL [`REJ_SAMPLE(inlist:(24 word)list)`; `256`] SUB_LIST_TOPSPLIT) THEN
+    DISCH_THEN(fun th ->
+      GEN_REWRITE_TAC (RAND_CONV o ONCE_DEPTH_CONV) [SYM th]) THEN
+    ASM_REWRITE_TAC[MEM_APPEND];
+    REWRITE_TAC[REJ_SAMPLE; MEM_FILTER] THEN MESON_TAC[]]);;
+
+(* Helper: val of a memory-resident 32-bit word = read of its 4 bytes.       *)
+let VAL_READ_BYTES32 = prove
+ (`!(a:int64) (s:x86state).
+      val(read (memory :> bytes32 a) s) = read(memory :> bytes(a,4)) s`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[bytes32; READ_COMPONENT_COMPOSE; asword; through; read] THEN
+  REWRITE_TAC[VAL_WORD; DIMINDEX_32] THEN MATCH_MP_TAC MOD_LT THEN
+  MP_TAC (ISPECL [`a:int64`;
+                  `4:num`;
+                  `(read (memory:(x86state,int64->byte)component) s):int64->byte`]
+                 READ_BYTES_BOUND) THEN
+  ARITH_TAC);;
+
+(* x86 postcondition-strengthening lemma (analogue of aarch64/ENSURES_STRENGTHEN_POST) *)
+let ENSURES_STRENGTHEN_POST_X86 = prove
+ (`!P (Q:x86state->bool) Q' R.
+     ensures x86 P Q' R /\ (!s. Q' s ==> Q s) ==> ensures x86 P Q R`,
+  REPEAT GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 MP_TAC ASSUME_TAC) THEN
+  REWRITE_TAC[ensures] THEN MATCH_MP_TAC MONO_FORALL THEN
+  X_GEN_TAC `s0:x86state` THEN MATCH_MP_TAC MONO_IMP THEN REWRITE_TAC[] THEN
+  MP_TAC(BETA_RULE(ISPECL [`x86`;
+    `\s':x86state. (Q':x86state->bool) s' /\ (R:x86state->x86state->bool) (s0:x86state) s'`;
+    `\s':x86state. (Q:x86state->bool) s' /\ (R:x86state->x86state->bool) (s0:x86state) s'`]
+    EVENTUALLY_MONO)) THEN
+  ANTS_TAC THENL [ASM_MESON_TAC[]; MESON_TAC[]]);;
+
+(* Bridge: when a contiguous memory region equals num_of_wordlist of an      *)
+(* int32 list, the i-th 32-bit element read back equals the list's i-th     *)
+(* element (as num).                                                        *)
+let VAL_READ_BYTES32_FROM_WORDLIST = prove
+ (`!(outlist:int32 list) (a:int64) (s:x86state) i.
+      i < LENGTH outlist /\
+      read(memory :> bytes(a, 4 * LENGTH outlist)) s = num_of_wordlist outlist
+      ==> val(read(memory :> bytes32(word_add a (word(4 * i)))) s) =
+          val(EL i outlist)`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_READ_BYTES32] THEN
+  SUBGOAL_THEN
+    `read(memory :> bytes(word_add a (word (4 * i)),4)) s =
+     read(memory :> bytes(a:int64,4 * LENGTH(outlist:int32 list))) s
+       DIV 2 EXP (8 * (4 * i)) MOD 2 EXP (8 * 4)`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_MOD; READ_BYTES_DIV] THEN
+    SUBGOAL_THEN `MIN (4 * LENGTH(outlist:int32 list) - 4 * i) 4 = 4`
+    SUBST1_TAC THENL
+     [UNDISCH_TAC `i < LENGTH(outlist:int32 list)` THEN ARITH_TAC;
+      REFL_TAC];
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(ISPECL [`outlist:int32 list`; `i:num`]
+                  (INST_TYPE [`:32`,`:N`] EL_NUM_OF_WORDLIST)) THEN
+    ASM_REWRITE_TAC[DIMINDEX_32] THEN DISCH_THEN SUBST1_TAC THEN
+    REWRITE_TAC[VAL_WORD; DIMINDEX_32;
+                ARITH_RULE `8 * 4 * i = 32 * i`;
+                ARITH_RULE `8 * 4 = 32`]]);;
+
+(* Strengthened core correctness: adds per-coefficient bound, matching the  *)
+(* CBMC contract `ensures(array_bound(buf, 0, len, 0, 8380417))`.           *)
+let MLDSA_REJ_UNIFORM_CORRECT_BOUND = prove
+ (`!res buf table (inlist:(24 word)list) pc.
+    LENGTH inlist = 280 /\
+    nonoverlapping (word pc, 243) (res, 1024) /\
+    nonoverlapping (word pc, 243) (buf, 840) /\
+    nonoverlapping (word pc, 243) (table, 2048) /\
+    nonoverlapping (res, 1024) (buf, 840) /\
+    nonoverlapping (res, 1024) (table, 2048)
+    ==> ensures x86
+         (\s. bytes_loaded s (word pc) (BUTLAST mldsa_rej_uniform_tmc) /\
+              read RIP s = word pc /\
+              C_ARGUMENTS [res; buf; table] s /\
+              read(memory :> bytes(buf,840)) s = num_of_wordlist inlist /\
+              read(memory :> bytes(table,2048)) s =
+                num_of_wordlist(mldsa_rej_uniform_table:byte list))
+         (\s. read RIP s = word(pc + 242) /\
+              let outlist = SUB_LIST(0,256) (REJ_SAMPLE inlist) in
+              let outlen = LENGTH outlist in
+              C_RETURN s = word outlen /\
+              read(memory :> bytes(res,4 * outlen)) s =
+                num_of_wordlist outlist /\
+              (!i. i < outlen
+                   ==> val(read(memory :> bytes32
+                                 (word_add res (word(4 * i)))) s) < 8380417))
+         (MAYCHANGE [RIP; RAX; RCX; R8; R9; R10] ,,
+          MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4;
+                     ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11;
+                     ZMM12; ZMM13; ZMM14; ZMM15] ,,
+          MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+          MAYCHANGE [memory :> bytes(res,1024)])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC ENSURES_STRENGTHEN_POST_X86 THEN
+  EXISTS_TAC
+   `\s:x86state.
+      read RIP s = word(pc + 242) /\
+      (let outlist = SUB_LIST(0,256) (REJ_SAMPLE (inlist:(24 word)list)) in
+       let outlen = LENGTH outlist in
+       C_RETURN s = word outlen /\
+       read(memory :> bytes(res:int64,4 * outlen)) s =
+         num_of_wordlist outlist)` THEN
+  CONJ_TAC THENL
+   [MATCH_MP_TAC MLDSA_REJ_UNIFORM_CORRECT THEN ASM_REWRITE_TAC[];
+    BETA_TAC THEN GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+    MP_TAC(ISPECL
+      [`SUB_LIST(0,256) (REJ_SAMPLE (inlist:(24 word)list))`;
+       `res:int64`; `s:x86state`; `i:num`]
+      VAL_READ_BYTES32_FROM_WORDLIST) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+    MATCH_MP_TAC REJ_SAMPLE_COEFF_BOUND THEN
+    EXISTS_TAC `inlist:(24 word)list` THEN
+    MATCH_MP_TAC MEM_EL THEN ASM_REWRITE_TAC[]]);;
+
+(* ========================================================================= *)
 (* SUBROUTINE_CORRECT variants (standard x86_64 ABI).                        *)
 (* ========================================================================= *)
 
@@ -4021,11 +4123,14 @@ let MLDSA_REJ_UNIFORM_NOIBT_SUBROUTINE_CORRECT = prove
                let outlen = LENGTH outlist in
                C_RETURN s = word outlen /\
                read(memory :> bytes(res,4 * outlen)) s =
-                 num_of_wordlist outlist))
+                 num_of_wordlist outlist /\
+               (!i. i < outlen
+                    ==> val(read(memory :> bytes32
+                                  (word_add res (word(4 * i)))) s) < 8380417)))
          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
           MAYCHANGE [memory :> bytes(res,1024)])`,
   X86_PROMOTE_RETURN_NOSTACK_TAC mldsa_rej_uniform_tmc
-    MLDSA_REJ_UNIFORM_CORRECT);;
+    MLDSA_REJ_UNIFORM_CORRECT_BOUND);;
 
 let MLDSA_REJ_UNIFORM_SUBROUTINE_CORRECT = prove
  (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
@@ -4054,7 +4159,10 @@ let MLDSA_REJ_UNIFORM_SUBROUTINE_CORRECT = prove
                let outlen = LENGTH outlist in
                C_RETURN s = word outlen /\
                read(memory :> bytes(res,4 * outlen)) s =
-                 num_of_wordlist outlist))
+                 num_of_wordlist outlist /\
+               (!i. i < outlen
+                    ==> val(read(memory :> bytes32
+                                  (word_add res (word(4 * i)))) s) < 8380417)))
          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
           MAYCHANGE [memory :> bytes(res,1024)])`,
   MATCH_ACCEPT_TAC(ADD_IBT_RULE MLDSA_REJ_UNIFORM_NOIBT_SUBROUTINE_CORRECT));;
@@ -4896,7 +5004,7 @@ let SCALAR_BODY_LEMMA_MEMSAFE = prove
     SUBGOAL_THEN `8 * N + i < 280` ASSUME_TAC THENL
      [UNDISCH_TAC `24 * N + 3 * i <= 837` THEN ARITH_TAC; ALL_TAC] THEN
     (* Pivot lemma: val r8val equals the 23 low bits of the list element.
-       Use the extracted PIVOT_VAL_EQ top-level lemma for fast application. *)
+       Use the PIVOT_VAL_EQ top-level lemma for fast application. *)
     SUBGOAL_THEN `1 * val(word (24 * N + 3 * i):int64) = 3 * (8 * N + i) /\
                   1 * val(word (24 * N + 3 * i):int64) + 2 = 3 * (8 * N + i) + 2`
       STRIP_ASSUME_TAC THENL
@@ -7058,7 +7166,11 @@ let mldsa_rej_uniform_windows_tmc =
 let MLDSA_REJ_UNIFORM_WINDOWS_TMC_EXEC =
   X86_MK_EXEC_RULE mldsa_rej_uniform_windows_tmc;;
 
-let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
+(* No-bound helper: identical postcondition to the SysV core lifted to the    *)
+(* Windows ABI. The per-coefficient bound is added below via                   *)
+(* ENSURES_STRENGTHEN_POST_X86, matching the MLDSA_REJ_UNIFORM_CORRECT_BOUND    *)
+(* strengthening of MLDSA_REJ_UNIFORM_CORRECT.                                  *)
+let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT_NOBOUND = prove
  (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
     LENGTH inlist = 280 /\
     nonoverlapping (word pc, LENGTH mldsa_rej_uniform_windows_tmc) (res, 1024) /\
@@ -7184,6 +7296,72 @@ let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
   CONV_TAC(DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
   REPEAT CONJ_TAC THEN CONV_TAC WORD_BLAST);;
 
+(* Strengthened Windows core correctness: adds the per-coefficient bound to    *)
+(* the no-bound helper via ENSURES_STRENGTHEN_POST_X86, mirroring              *)
+(* MLDSA_REJ_UNIFORM_CORRECT_BOUND. The bound conjunct follows from the        *)
+(* memory-equality conjunct (res holds num_of_wordlist outlist) and            *)
+(* REJ_SAMPLE_COEFF_BOUND, independently of the wrapper epilogue.              *)
+let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
+ (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
+    LENGTH inlist = 280 /\
+    nonoverlapping (word pc, LENGTH mldsa_rej_uniform_windows_tmc) (res, 1024) /\
+    nonoverlapping (word pc, LENGTH mldsa_rej_uniform_windows_tmc) (buf, 840) /\
+    nonoverlapping (word pc, LENGTH mldsa_rej_uniform_windows_tmc) (table, 2048) /\
+    nonoverlapping (res, 1024) (buf, 840) /\
+    nonoverlapping (res, 1024) (table, 2048) /\
+    nonoverlapping (word_sub stackpointer (word 176), 184) (res, 1024) /\
+    nonoverlapping (word_sub stackpointer (word 176), 184) (buf, 840) /\
+    nonoverlapping (word_sub stackpointer (word 176), 184) (table, 2048) /\
+    nonoverlapping (word_sub stackpointer (word 176), 184)
+                   (word pc, LENGTH mldsa_rej_uniform_windows_tmc)
+    ==> ensures x86
+         (\s. bytes_loaded s (word pc) mldsa_rej_uniform_windows_tmc /\
+              read RIP s = word pc /\
+              read RSP s = stackpointer /\
+              read (memory :> bytes64 stackpointer) s = returnaddress /\
+              WINDOWS_C_ARGUMENTS [res; buf; table] s /\
+              read(memory :> bytes(buf,840)) s = num_of_wordlist inlist /\
+              read(memory :> bytes(table,2048)) s =
+                num_of_wordlist(mldsa_rej_uniform_table:byte list))
+         (\s. read RIP s = returnaddress /\
+              read RSP s = word_add stackpointer (word 8) /\
+              (let outlist = SUB_LIST(0,256) (REJ_SAMPLE inlist) in
+               let outlen = LENGTH outlist in
+               WINDOWS_C_RETURN s = word outlen /\
+               read(memory :> bytes(res,4 * outlen)) s =
+                 num_of_wordlist outlist /\
+               (!i. i < outlen
+                    ==> val(read(memory :> bytes32
+                                  (word_add res (word(4 * i)))) s) < 8380417)))
+         (MAYCHANGE [RSP] ,, WINDOWS_MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+          MAYCHANGE [memory :> bytes(res,1024)] ,,
+          MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176),176)])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC ENSURES_STRENGTHEN_POST_X86 THEN
+  EXISTS_TAC
+   `\s:x86state.
+      read RIP s = returnaddress /\
+      read RSP s = word_add stackpointer (word 8) /\
+      (let outlist = SUB_LIST(0,256) (REJ_SAMPLE (inlist:(24 word)list)) in
+       let outlen = LENGTH outlist in
+       WINDOWS_C_RETURN s = word outlen /\
+       read(memory :> bytes(res:int64,4 * outlen)) s =
+         num_of_wordlist outlist)` THEN
+  CONJ_TAC THENL
+   [MATCH_MP_TAC MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT_NOBOUND THEN
+    ASM_REWRITE_TAC[];
+    BETA_TAC THEN GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+    MP_TAC(ISPECL
+      [`SUB_LIST(0,256) (REJ_SAMPLE (inlist:(24 word)list))`;
+       `res:int64`; `s:x86state`; `i:num`]
+      VAL_READ_BYTES32_FROM_WORDLIST) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+    MATCH_MP_TAC REJ_SAMPLE_COEFF_BOUND THEN
+    EXISTS_TAC `inlist:(24 word)list` THEN
+    MATCH_MP_TAC MEM_EL THEN ASM_REWRITE_TAC[]]);;
+
 let MLDSA_REJ_UNIFORM_WINDOWS_SUBROUTINE_CORRECT = prove
  (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
     LENGTH inlist = 280 /\
@@ -7212,7 +7390,10 @@ let MLDSA_REJ_UNIFORM_WINDOWS_SUBROUTINE_CORRECT = prove
                let outlen = LENGTH outlist in
                WINDOWS_C_RETURN s = word outlen /\
                read(memory :> bytes(res,4 * outlen)) s =
-                 num_of_wordlist outlist))
+                 num_of_wordlist outlist /\
+               (!i. i < outlen
+                    ==> val(read(memory :> bytes32
+                                  (word_add res (word(4 * i)))) s) < 8380417)))
          (MAYCHANGE [RSP] ,, WINDOWS_MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
           MAYCHANGE [memory :> bytes(res,1024)] ,,
           MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176),176)])`,
