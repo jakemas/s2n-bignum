@@ -13617,7 +13617,7 @@ int test_mldsa_rej_uniform(void)
         for (i = 0; i < 256; ++i) { a[i] = 0; b[i] = 0; }
 
         ac = (uint32_t)reference_mldsa_rej_uniform(a, inbuf, 840);
-        bc = mldsa_rej_uniform(b, inbuf,
+        bc = mldsa_rej_uniform_VARIABLE_TIME_x86(b, inbuf,
                                (const uint64_t *)mldsa_rej_uniform_table);
 
         if (ac != bc) {

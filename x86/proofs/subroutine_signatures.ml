@@ -4911,7 +4911,7 @@ let subroutine_signatures = [
    ])
 );
 
-("mldsa_rej_uniform",
+("mldsa_rej_uniform_VARIABLE_TIME_x86",
   ([(*args*)
      ("r", "int32_t[static 256]", (*is const?*)"false");
      ("buf", "uint8_t[static 840]", (*is const?*)"true");

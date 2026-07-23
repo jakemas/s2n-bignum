@@ -18,7 +18,7 @@
 // Bai, Ducas, Kiltz, Lepoint, Lyubashevsky, Schwabe, Seiler, Stehlé
 // (https://github.com/pq-crystals/dilithium/tree/master/avx2)
 //
-// extern uint32_t mldsa_rej_uniform
+// extern uint32_t mldsa_rej_uniform_VARIABLE_TIME_x86
 //   (int32_t r[static 256],
 //    const uint8_t buf[static 840],
 //    const uint64_t table[static 256]);
@@ -30,12 +30,12 @@
 #include "_internal_s2n_bignum_x86.h"
 
         .intel_syntax noprefix
-        S2N_BN_SYM_VISIBILITY_DIRECTIVE(mldsa_rej_uniform)
-        S2N_BN_FUNCTION_TYPE_DIRECTIVE(mldsa_rej_uniform)
-        S2N_BN_SYM_PRIVACY_DIRECTIVE(mldsa_rej_uniform)
+        S2N_BN_SYM_VISIBILITY_DIRECTIVE(mldsa_rej_uniform_VARIABLE_TIME_x86)
+        S2N_BN_FUNCTION_TYPE_DIRECTIVE(mldsa_rej_uniform_VARIABLE_TIME_x86)
+        S2N_BN_SYM_PRIVACY_DIRECTIVE(mldsa_rej_uniform_VARIABLE_TIME_x86)
         .text
 
-S2N_BN_SYMBOL(mldsa_rej_uniform):
+S2N_BN_SYMBOL(mldsa_rej_uniform_VARIABLE_TIME_x86):
 
         _CET_ENDBR
 
@@ -84,13 +84,13 @@ S2N_BN_SYMBOL(mldsa_rej_uniform):
         xor     eax, eax
         xor     ecx, ecx
 
-Lmldsa_rej_uniform_loop:
+Lmldsa_rej_uniform_VARIABLE_TIME_x86_loop:
         // Exit to scalar tail if we have 248 or more accepted (next 8 might
         // overflow) or if byte offset is past 808 (would read past buf+840-24).
         cmp     eax, 0xf8
-        ja      Lmldsa_rej_uniform_scalar
+        ja      Lmldsa_rej_uniform_VARIABLE_TIME_x86_scalar
         cmp     ecx, 0x328
-        ja      Lmldsa_rej_uniform_scalar
+        ja      Lmldsa_rej_uniform_VARIABLE_TIME_x86_scalar
 
         vmovdqu ymm3, YMMWORD PTR [rsi+rcx]
         add     ecx, 0x18
@@ -105,13 +105,13 @@ Lmldsa_rej_uniform_loop:
         vpermd  ymm3, ymm4, ymm3
         vmovdqu YMMWORD PTR [rdi+4*rax], ymm3
         add     eax, r9d
-        jmp     Lmldsa_rej_uniform_loop
+        jmp     Lmldsa_rej_uniform_VARIABLE_TIME_x86_loop
 
-Lmldsa_rej_uniform_scalar:
+Lmldsa_rej_uniform_VARIABLE_TIME_x86_scalar:
         cmp     eax, 0x100
-        jae     Lmldsa_rej_uniform_done
+        jae     Lmldsa_rej_uniform_VARIABLE_TIME_x86_done
         cmp     ecx, 0x345
-        ja      Lmldsa_rej_uniform_done
+        ja      Lmldsa_rej_uniform_VARIABLE_TIME_x86_done
         movzx   r8d, WORD PTR [rsi+rcx]
         movzx   r9d, BYTE PTR [rsi+rcx+2]
         shl     r9d, 0x10
@@ -119,12 +119,12 @@ Lmldsa_rej_uniform_scalar:
         and     r8d, 0x7fffff
         add     ecx, 0x3
         cmp     r8d, 0x7fe001
-        jae     Lmldsa_rej_uniform_scalar
+        jae     Lmldsa_rej_uniform_VARIABLE_TIME_x86_scalar
         mov     DWORD PTR [rdi+4*rax], r8d
         add     eax, 0x1
-        jmp     Lmldsa_rej_uniform_scalar
+        jmp     Lmldsa_rej_uniform_VARIABLE_TIME_x86_scalar
 
-Lmldsa_rej_uniform_done:
+Lmldsa_rej_uniform_VARIABLE_TIME_x86_done:
 #if WINDOWS_ABI
         movdqu  xmm6,  [rsp+0]
         movdqu  xmm7,  [rsp+16]
