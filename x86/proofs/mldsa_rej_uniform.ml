@@ -1,5 +1,4 @@
 (*
- * Copyright (c) The mldsa-native project authors
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
  *)
@@ -9,7 +8,6 @@
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
-
 needs "x86/proofs/mldsa_rej_uniform_table.ml";;
 
 (*** print_literal_from_elf "x86/mldsa/mldsa_rej_uniform.o";;
@@ -17,7 +15,6 @@ needs "x86/proofs/mldsa_rej_uniform_table.ml";;
 
 let mldsa_rej_uniform_mc = define_assert_from_elf
   "mldsa_rej_uniform_mc" "x86/mldsa/mldsa_rej_uniform.o"
-(*** BYTECODE START ***)
 [
   0xf3; 0x0f; 0x1e; 0xfa;  (* ENDBR64 *)
   0x49; 0xba; 0x00; 0x01; 0x02; 0xff; 0x03; 0x04; 0x05; 0xff;
@@ -103,7 +100,6 @@ let mldsa_rej_uniform_mc = define_assert_from_elf
   0xeb; 0xc3;              (* JMP (Imm8 (word 195)) *)
   0xc3                     (* RET *)
 ];;
-(*** BYTECODE END ***)
 
 let mldsa_rej_uniform_tmc =
   define_trimmed "mldsa_rej_uniform_tmc" mldsa_rej_uniform_mc;;
@@ -113,8 +109,6 @@ let MLDSA_REJ_UNIFORM_EXEC = X86_MK_CORE_EXEC_RULE mldsa_rej_uniform_tmc;;
 (* ========================================================================= *)
 (* Pre-helper lemmas (VPSUBD_SIGN_BIT_BOUNDED, SIGN_BIT_BITVAL).             *)
 (* ========================================================================= *)
-
-(* === Lemmas that helpers file depends on === *)
 
 let VPSUBD_SIGN_BIT_BOUNDED = prove
  (`!x:int32. val x < 8388608
@@ -2321,10 +2315,10 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
   (* Phase 1: WOP to find loop iteration count N.                        *)
   (*                                                                     *)
   (* Thresholds 808/248 match the CMP instructions:                      *)
-  (*   CMP eax, 0xF8 (248): JA exits if outlen > 248                    *)
-  (*   CMP ecx, 0x328 (808): JA exits if offset > 808                   *)
-  (* At m < N, negation gives: 24*(m+1) <= 832 /\ LENGTH(...) <= 248    *)
-  (* IMPORTANT: use DISCH_THEN to avoid global NOT_LT rewrite.          *)
+  (*   CMP eax, 0xF8 (248): JA exits if outlen > 248                     *)
+  (*   CMP ecx, 0x328 (808): JA exits if offset > 808                    *)
+  (* At m < N, negation gives: 24*(m+1) <= 832 /\ LENGTH(...) <= 248     *)
+  (* IMPORTANT: use DISCH_THEN to avoid global NOT_LT rewrite.           *)
   (* =================================================================== *)
 
   SUBGOAL_THEN
@@ -2341,9 +2335,9 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
     ALL_TAC] THEN
 
   (* =================================================================== *)
-  (* Phase 2: ENSURES_WHILE_UP2_TAC for the SIMD loop.                  *)
+  (* Phase 2: ENSURES_WHILE_UP2_TAC for the SIMD loop.                   *)
   (*                                                                     *)
-  (* Loop head: pc+104 (instruction 18: CMP eax,0xF8)                   *)
+  (* Loop head: pc+104 (instruction 18: CMP eax,0xF8)                    *)
   (* Loop exit: pc+181 (instruction 36: scalar section entry)            *)
   (* UP2 automatically adds bytes_loaded to the invariant.               *)
   (* Bounds are derived from WOP inside the loop body, not stored.       *)
@@ -2371,7 +2365,6 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
 
    [(* ================================================================= *)
     (* Subgoal 1: Pre-loop setup (instructions 1-17, pc -> pc+104)       *)
-    (* FULLY PROVED                                                      *)
     (* ================================================================= *)
     ENSURES_INIT_TAC "s0" THEN
     X86_STEPS_TAC MLDSA_REJ_UNIFORM_EXEC (1--17) THEN
@@ -2388,10 +2381,10 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
     (*                                                                   *)
     (* Structure:                                                        *)
     (*   (a) Derive bounds from WOP: curlen <= 248, 24*i <= 808          *)
-    (*   (b) Simulate CMP+JA (instrs 18-19): resolve JA not taken       *)
-    (*   (c) Simulate CMP+JA (instrs 20-21): resolve JA not taken       *)
+    (*   (b) Simulate CMP+JA (instrs 18-19): resolve JA not taken        *)
+    (*   (c) Simulate CMP+JA (instrs 20-21): resolve JA not taken        *)
     (*   (d) Simulate SIMD body (instrs 22-35)                           *)
-    (*   (e) COND_CASES_TAC on i+1 < N                                  *)
+    (*   (e) COND_CASES_TAC on i+1 < N                                   *)
     (*   (f) Semantic proof: relate SIMD to REJ_SAMPLE                   *)
     (* ================================================================= *)
 
@@ -3676,14 +3669,14 @@ let MLDSA_REJ_UNIFORM_CORRECT = prove
     (* ================================================================= *)
     (* Subgoal 3: Post-loop (scalar loop + VZEROUPPER + RET)             *)
     (*                                                                   *)
-    (* Entry: pc+181 with REJ_SAMPLE(SUB_LIST(0,8*N)) accumulated.      *)
-    (* Code structure:                                                  *)
-    (*   pc+181: CMP eax,256; JAE vzeroupper                           *)
-    (*   pc+188: CMP ecx,837; JA vzeroupper                            *)
-    (*   pc+196..240: scalar coefficient loop (≤ 8 iterations)         *)
-    (*   pc+242: VZEROUPPER                                             *)
+    (* Entry: pc+181 with REJ_SAMPLE(SUB_LIST(0,8*N)) accumulated.       *)
+    (* Code structure:                                                   *)
+    (*   pc+181: CMP eax,256; JAE vzeroupper                             *)
+    (*   pc+188: CMP ecx,837; JA vzeroupper                              *)
+    (*   pc+196..240: scalar coefficient loop (≤ 8 iterations)           *)
+    (*   pc+242: VZEROUPPER                                              *)
     (*                                                                   *)
-    (* Preparation: abbreviate outlist/outlen, establish bounds.        *)
+    (* Preparation: abbreviate outlist/outlen, establish bounds.         *)
     (* ================================================================= *)
     CONV_TAC(RATOR_CONV(LAND_CONV(TOP_DEPTH_CONV let_CONV))) THEN
     MAP_EVERY ABBREV_TAC
@@ -4008,7 +4001,7 @@ let ENSURES_STRENGTHEN_POST_X86 = prove
     EVENTUALLY_MONO)) THEN
   ANTS_TAC THENL [ASM_MESON_TAC[]; MESON_TAC[]]);;
 
-(* Bridge: when a contiguous memory region equals num_of_wordlist of an      *)
+(* Bridge: when a contiguous memory region equals num_of_wordlist of an     *)
 (* int32 list, the i-th 32-bit element read back equals the list's i-th     *)
 (* element (as num).                                                        *)
 let VAL_READ_BYTES32_FROM_WORDLIST = prove
@@ -4171,7 +4164,7 @@ let MLDSA_REJ_UNIFORM_SUBROUTINE_CORRECT = prove
 (* Memory safety for the non-constant-time rejection sampling.               *)
 (*                                                                           *)
 (* We prove memory safety alone, _not_ constant-time, for                    *)
-(* mldsa_rej_uniform. This function operates on public data only, hence   *)
+(* mldsa_rej_uniform. This function operates on public data only, hence      *)
 (* constant-time'ness is not a requirement. Allowing for variable-time       *)
 (* execution enables a faster implementation.                                *)
 (*                                                                           *)
@@ -7080,7 +7073,6 @@ let MLDSA_REJ_UNIFORM_MEMSAFE = prove
                      else NO_TAC
                    with _ -> NO_TAC))) (asl, w))]]]]]);;
 
-
 (* ------------------------------------------------------------------------- *)
 (* Subroutine variants for memory safety.                                    *)
 (* ------------------------------------------------------------------------- *)
@@ -7167,9 +7159,9 @@ let MLDSA_REJ_UNIFORM_WINDOWS_TMC_EXEC =
   X86_MK_EXEC_RULE mldsa_rej_uniform_windows_tmc;;
 
 (* No-bound helper: identical postcondition to the SysV core lifted to the    *)
-(* Windows ABI. The per-coefficient bound is added below via                   *)
-(* ENSURES_STRENGTHEN_POST_X86, matching the MLDSA_REJ_UNIFORM_CORRECT_BOUND    *)
-(* strengthening of MLDSA_REJ_UNIFORM_CORRECT.                                  *)
+(* Windows ABI. The per-coefficient bound is added below via                  *)
+(* ENSURES_STRENGTHEN_POST_X86, matching the MLDSA_REJ_UNIFORM_CORRECT_BOUND  *)
+(* strengthening of MLDSA_REJ_UNIFORM_CORRECT.                                *)
 let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT_NOBOUND = prove
  (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
     LENGTH inlist = 280 /\
@@ -7296,11 +7288,6 @@ let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT_NOBOUND = prove
   CONV_TAC(DEPTH_CONV let_CONV) THEN ASM_REWRITE_TAC[] THEN
   REPEAT CONJ_TAC THEN CONV_TAC WORD_BLAST);;
 
-(* Strengthened Windows core correctness: adds the per-coefficient bound to    *)
-(* the no-bound helper via ENSURES_STRENGTHEN_POST_X86, mirroring              *)
-(* MLDSA_REJ_UNIFORM_CORRECT_BOUND. The bound conjunct follows from the        *)
-(* memory-equality conjunct (res holds num_of_wordlist outlist) and            *)
-(* REJ_SAMPLE_COEFF_BOUND, independently of the wrapper epilogue.              *)
 let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
  (`!res buf table (inlist:(24 word)list) pc stackpointer returnaddress.
     LENGTH inlist = 280 /\
@@ -7402,13 +7389,13 @@ let MLDSA_REJ_UNIFORM_WINDOWS_SUBROUTINE_CORRECT = prove
 (* ------------------------------------------------------------------------- *)
 (* Memory safety of the Windows ABI version.                                 *)
 (*                                                                           *)
-(* The Windows wrapper is proved manually (rather than via                    *)
-(* WINDOWS_X86_WRAP_STACK_TAC, whose non-safety path cannot carry an          *)
-(* (exists e2. memaccess_inbounds e2 ...) postcondition): step the            *)
-(* prologue, apply the SystemV-body MLDSA_REJ_UNIFORM_MEMSAFE to the          *)
-(* current event trace, step the epilogue, then discharge the combined        *)
-(* in-bounds obligation. The in-bounds regions add the 176-byte register      *)
-(* spill area on the stack to the SystemV [buf; table] / [res] sets.          *)
+(* The Windows wrapper is proved manually (rather than via                   *)
+(* WINDOWS_X86_WRAP_STACK_TAC, whose non-safety path cannot carry an         *)
+(* (exists e2. memaccess_inbounds e2 ...) postcondition): step the           *)
+(* prologue, apply the SystemV-body MLDSA_REJ_UNIFORM_MEMSAFE to the         *)
+(* current event trace, step the epilogue, then discharge the combined       *)
+(* in-bounds obligation. The in-bounds regions add the 176-byte register     *)
+(* spill area on the stack to the SystemV [buf; table] / [res] sets.         *)
 (* ------------------------------------------------------------------------- *)
 
 let MLDSA_REJ_UNIFORM_NOIBT_WINDOWS_SUBROUTINE_SAFE = time prove
