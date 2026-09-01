@@ -250,6 +250,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              generic/word_negmodinv.o \
              generic/word_popcount.o \
              generic/word_recip.o \
+             mldsa/mldsa_caddq.o \
              mldsa/mldsa_intt.o \
              mldsa/mldsa_ntt.o \
              mldsa/mldsa_nttunpack.o \
@@ -258,6 +259,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              mldsa/mldsa_pointwise_acc_l5.o \
              mldsa/mldsa_pointwise_acc_l7.o \
              mldsa/mldsa_reduce.o \
+             mldsa/mldsa_rej_uniform_VARIABLE_TIME.o \
              mlkem/mlkem_basemul_k2.o \
              mlkem/mlkem_basemul_k3.o \
              mlkem/mlkem_basemul_k4.o \
@@ -368,7 +370,9 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              secp256k1/bignum_demont_p256k1.o \
              secp256k1/bignum_double_p256k1.o \
              secp256k1/bignum_half_p256k1.o \
+             secp256k1/bignum_mod_n256k1.o \
              secp256k1/bignum_mod_n256k1_4.o \
+             secp256k1/bignum_mod_p256k1.o \
              secp256k1/bignum_mod_p256k1_4.o \
              secp256k1/bignum_montmul_p256k1.o \
              secp256k1/bignum_montmul_p256k1_alt.o \

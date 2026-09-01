@@ -689,12 +689,48 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
            match pfxs with
            | (T, Rep0, SG0) -> SOME (VPMULHRSW (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
            | _ -> NONE)
+        | [0x17:8] -> if word_not v = (word 0b1111:4 word) then
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPTEST (mmreg reg sz) (simd_of_RM sz rm),l)
+           | _ -> NONE)
+        else NONE
+        | [0x1e:8] -> if word_not v = (word 0b1111:4 word) then
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPABSD (mmreg reg sz) (simd_of_RM sz rm),l)
+           | _ -> NONE)
+        else NONE
+        | [0x21:8] -> if word_not v = (word 0b1111:4 word) then
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           let sop = if is_memop rm then
+                       (if L then operand_of_RM Full_64 rm
+                        else operand_of_RM Lower_32 rm)
+                     else simd_of_RM Lower_128 rm in
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPMOVSXBD (mmreg reg sz) sop,l)
+           | _ -> NONE)
+        else NONE
         | [0x28:8] ->
           let sz = vexL_size L in
           (read_ModRM rex l >>= \((reg,rm),l).
            match pfxs with
            | (T, Rep0, SG0) -> SOME (VPMULDQ (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
            | _ -> NONE)
+        | [0x30:8] -> if word_not v = (word 0b1111:4 word) then
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           let sop = if is_memop rm then
+                       (if L then simd_of_RM Lower_128 rm
+                        else operand_of_RM Full_64 rm)
+                     else simd_of_RM Lower_128 rm in
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPMOVZXBW (mmreg reg sz) sop,l)
+           | _ -> NONE)
+        else NONE
         | [0x31:8] -> if word_not v = (word 0b1111:4 word) then
           let sz = vexL_size L in
           (read_ModRM rex l >>= \((reg,rm),l).
@@ -750,6 +786,16 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
                        else simd_of_RM Lower_128 rm in
              SOME (VPBROADCASTQ (mmreg reg sz) sop,l)
            | _ -> NONE)
+        | [0x79:8] ->
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           if rex_W rex then NONE else
+           match pfxs with
+           | (T, Rep0, SG0) ->
+             let sop = if is_memop rm then operand_of_RM Lower_16 rm
+                       else simd_of_RM Lower_128 rm in
+             SOME (VPBROADCASTW (mmreg reg sz) sop,l)
+           | _ -> NONE)
         | [0x40:8] ->
           let sz = vexL_size L in
           (read_ModRM rex l >>= \((reg,rm),l).
@@ -788,6 +834,14 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
            let src = simd_of_RM Lower_256 rm in
            match pfxs with
            | (F, Rep0, SG0) -> SOME (VMOVMSKPS dest src, l)
+           | _ -> NONE)
+        else NONE
+        | [0xd7:8] -> if word_not v = (word 0b1111:4 word) /\ L then
+          (read_ModRM rex l >>= \((reg,rm),l).
+           let dest = %(gpr_adjust reg Lower_32) in
+           let src = simd_of_RM Lower_256 rm in
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPMOVMSKB dest src, l)
            | _ -> NONE)
         else NONE
         | [0x16:8] ->
@@ -915,6 +969,12 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
            match pfxs with
            | (T, Rep0, SG0) -> SOME (VPANDN (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
            | _ -> NONE)
+        | [0xe4:8] ->
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPMULHUW (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
+           | _ -> NONE)
         | [0xe5:8] ->
           let sz = vexL_size L in
           (read_ModRM rex l >>= \((reg,rm),l).
@@ -938,6 +998,12 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
           (read_ModRM rex l >>= \((reg,rm),l).
            match pfxs with
            | (T, Rep0, SG0) -> SOME (VPMADDWD (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
+           | _ -> NONE)
+        | [0xf8:8] ->
+          let sz = vexL_size L in
+          (read_ModRM rex l >>= \((reg,rm),l).
+           match pfxs with
+           | (T, Rep0, SG0) -> SOME (VPSUBB (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
            | _ -> NONE)
         | [0xf9:8] ->
           let sz = vexL_size L in
@@ -1507,9 +1573,11 @@ let GPR_thms,GPR_CONV =
                r8;  r9; r10; r11; r12; r13; r14; r15|]
   and c32 = [|eax; ecx; edx; ebx; esp; ebp; esi; edi;
               r8d; r9d;r10d;r11d;r12d;r13d;r14d;r15d|]
-  and c16 = [|ax;cx;dx;bx;sp;bp;si;di|]
+  and c16 = [|ax;cx;dx;bx;sp;bp;si;di;
+              r8w;r9w;r10w;r11w;r12w;r13w;r14w;r15w|]
   and u8  = [|ah;ch;dh;bh|]
-  and c8  = [|al;cl;dl;bl;spl;bpl;sil;dil|] in
+  and c8  = [|al;cl;dl;bl;spl;bpl;sil;dil;
+              r8b;r9b;r10b;r11b;r12b;r13b;r14b;r15b|] in
   flat (map (fun A ->
     let l = Array.to_list A in
     Array.iteri (fun i th -> A.(i) <- SYM th) A; l) [c64;c32;c16;u8;c8]),
@@ -1605,7 +1673,7 @@ let ADX_CONV =
   function
   | Comb(Const("adx",_),v) ->
     (try assoc v pths
-    with _ -> failwith "ADX_CONV")
+    with Failure _ -> failwith "ADX_CONV")
   | _ -> failwith "ADX_CONV";;
 
 let TO_WORDSIZE_CONV =
@@ -1614,7 +1682,7 @@ let TO_WORDSIZE_CONV =
   function
   | Comb(Const("to_wordsize",_),v) ->
     (try assoc v pths
-    with _ -> failwith "TO_WORDSIZE_CONV")
+    with Failure _ -> failwith "TO_WORDSIZE_CONV")
   | _ -> failwith "TO_WORDSIZE_CONV";;
 
 let SIMD_TO_WORDSIZE_CONV =
@@ -1623,7 +1691,7 @@ let SIMD_TO_WORDSIZE_CONV =
   function
   | Comb(Const("simd_to_wordsize",_),v) ->
     (try assoc v pths
-    with _ -> failwith "SIMD_TO_WORDSIZE_CONV")
+    with Failure _ -> failwith "SIMD_TO_WORDSIZE_CONV")
   | _ -> failwith "SIMD_TO_WORDSIZE_CONV";;
 
 let VEXL_SIZE_CONV =
@@ -1632,7 +1700,7 @@ let VEXL_SIZE_CONV =
   function
   | Comb(Const("vexL_size",_),v) ->
     (try assoc v pths
-    with _ -> failwith "VEXL_SIZE_CONV")
+    with Failure _ -> failwith "VEXL_SIZE_CONV")
   | _ -> failwith "VEXL_SIZE_CONV";;
 
 let operand_of_RM = define

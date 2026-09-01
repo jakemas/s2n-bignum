@@ -33,6 +33,7 @@
         S2N_BN_SYM_PRIVACY_DIRECTIVE(curve25519_x25519base_byte_alt)
 
         .text
+        .balign 32
 
 // Size of individual field elements
 
@@ -485,7 +486,7 @@ Lcurve25519_x25519base_alt_standard:
         mov     rax, [rsp]
         and     rax, 8
 
-        lea     r10, [rip+curve25519_x25519base_alt_constant]
+        lea     r10, [rip+S2N_BN_SYMBOL(curve25519_x25519base_alt_constant)]
         lea     r11, [r10+8*12]
 
         mov     rax, [r10]

@@ -687,7 +687,7 @@ let MLKEM_REDUCE_NOIBT_WINDOWS_SUBROUTINE_SAFE = prove
                WINDOWS_MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
                MAYCHANGE [memory :> bytes(word_sub stackpointer (word 96), 96)] ,,
                MAYCHANGE [memory :> bytes(a, 512)])`,
-  (* The safety property specific tacics *)
+  (* The safety property specific tactics *)
   ASSUME_CALLEE_SAFETY_TAC MLKEM_REDUCE_SAFE "H_subth" THEN
   META_EXISTS_TAC THEN
 
@@ -726,7 +726,7 @@ let MLKEM_REDUCE_NOIBT_WINDOWS_SUBROUTINE_SAFE = prove
   (* safety property version *)
   W(fun (asl,w) ->
     (* grab the current event list *)
-    let current_events = List.filter_map (fun (_,ath) -> let t = concl ath in
+    let current_events = filter_map (fun (_,ath) -> let t = concl ath in
       if is_eq t && is_read_events (lhs t) then Some (rhs t)
       else None) asl in
     if length current_events <> 1

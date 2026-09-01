@@ -17,6 +17,14 @@
 s/\.intel_syntax *noprefix//
 s/_internal_s2n_bignum_x86/_internal_s2n_bignum_x86_att/
 
+# Swap zero-extending loads to AT&T size-suffixed form BEFORE memory-operand
+# reshaping. We rewrite the mnemonic and strip the WORD/BYTE PTR hint so the
+# remaining rules just translate the memory operand and swap register order.
+s/ movzx  +([a-z][a-z_0-9]*d?), *WORD PTR/ movzwl \1,/g
+s/ movzx  +([a-z][a-z_0-9]*d?), *word ptr/ movzwl \1,/g
+s/ movzx  +([a-z][a-z_0-9]*d?), *BYTE PTR/ movzbl \1,/g
+s/ movzx  +([a-z][a-z_0-9]*d?), *byte ptr/ movzbl \1,/g
+
 # Don't make any transforms on lines with most argument-taking macros
 # We need to be more careful with those taking ymm register arguments
 
@@ -36,9 +44,9 @@ s/_internal_s2n_bignum_x86/_internal_s2n_bignum_x86_att/
 # Reverse the argument order for binary, ternary and quaternary instructions
 # Skip all other macros for this step even if we later do ymm replacement.
 
-/shuffle|butterfly/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,;]*)([/;].*)*$/\1\4, \3 \5/
-/shuffle|butterfly/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,]*), *([^ ][^/,;]*)([/;].*)*$/\1\5, \4, \3 \6/
-/shuffle|butterfly/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,]*), *([^ ][^/,]*), *([^ ][^/,;]*)([/;].*)*$/\1\6, \5, \4, \3 \7/
+/shuffle|butterfly|caddq_vector/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,;]*)([/;].*)*$/\1\4, \3 \5/
+/shuffle|butterfly|caddq_vector/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,]*), *([^ ][^/,;]*)([/;].*)*$/\1\5, \4, \3 \6/
+/shuffle|butterfly|caddq_vector/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)([^ (][^,/]*), *([^ ][^/,]*), *([^ ][^/,]*), *([^ ][^/,;]*)([/;].*)*$/\1\6, \5, \4, \3 \7/
 
 # Fix up whitespace just in case
 
@@ -46,7 +54,7 @@ s/ +,/,/
 
 # Decorate literals with $
 
-/butterfly/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)(([-~+*/()A-Z0-9]*(0x[a-zA-Z0-9]*)*)* *\,)/\1$\3/
+/butterfly|caddq_vector/! s/^(([a-z_0-9]+\:)* +[a-z_0-9]+ +)(([-~+*/()A-Z0-9]*(0x[a-zA-Z0-9]*)*)* *\,)/\1$\3/
 
 # Translate relative addresses with uppercase base variable
 # Turn defined offset fields into explicit indirections to match
@@ -99,7 +107,18 @@ s/([[(,.;: ])([xyz]mm[0-9]*)/\1\%\2/g
 
 # Add explicit sizes to instructions
 
+s/YMMWORD PTR//g
+s/ymmword ptr//g
+s/XMMWORD PTR//g
+s/xmmword ptr//g
 s/QWORD PTR//g
+s/qword ptr//g
+s/DWORD PTR//g
+s/dword ptr//g
+s/WORD PTR//g
+s/word ptr//g
+s/BYTE PTR//g
+s/byte ptr//g
 
 s/ adc  / adcq /g
 s/ adcx  / adcxq /g

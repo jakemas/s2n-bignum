@@ -1390,6 +1390,14 @@ let x86_VMOVMSKPS = new_definition
       128 * bitval(bit 31 (word_subword x (224,32):int32))) in
     (dest := word_zx res:int32) s`;;
 
+let x86_VPMOVMSKB = new_definition
+ `x86_VPMOVMSKB dest src (s:x86state) =
+    let x:int256 = read src s in
+    (dest := word(nsum (0..31)
+                   (\i. 2 EXP i *
+                        bitval(bit 7 (word_subword x (8 * i,8):byte))))
+            :int32) s`;;
+
 (*** Push and pop are a bit odd in several ways. First of all, there is  ***)
 (*** an implicit memory operand so this doesn't have quite the same      ***)
 (*** "shallowness": we refer to the memory component explicitly. And we  ***)
@@ -1500,7 +1508,7 @@ let x86_RET = new_definition
 (*** 32-bit and 64-bit forms just mask as in the others. Not generic.    ***)
 
 (*** It's not quite enough to just use the native size, as certain       ***)
-(*** things are different in case case masked_shift IN {0,1} (e.g. OF)   ***)
+(*** things are different in case masked_shift IN {0,1} (e.g. OF)        ***)
 (*** We assume that the masked value comes in from the decoder           ***)
 (*** Our underlying rotate functions are modulo anyway.                  ***)
 (*** It is at least clearly stated that SF, ZF, AF, PF are unaffected    ***)
@@ -1844,6 +1852,13 @@ let x86_VPBROADCASTQ = new_definition
       let res:N word = word_duplicate qw in
       (dest := res) s`;;
 
+let x86_VPBROADCASTW = new_definition
+  `x86_VPBROADCASTW (dest:(x86state,(N)word)component) src (s:x86state) =
+      let (x:M word) = read src s in
+      let ww = word_subword x (0,16):(16)word in
+      let res:N word = word_duplicate ww in
+      (dest := res) s`;;
+
 let x86_VPBLENDVB = new_definition
   `x86_VPBLENDVB dest src1 src2 mask (s:x86state) =
       let (x:N word) = read src1 s
@@ -1868,6 +1883,18 @@ let x86_VPBLENDVB = new_definition
             val(if bit (8*i+7) m128
                 then (word_subword y128 (8*i,8):byte)
                 else (word_subword x128 (8*i,8):byte)) * 2 EXP (8*i))) in
+        (dest := (word_zx res):N word) s`;;
+
+let x86_VPABSD = new_definition
+  `x86_VPABSD dest src (s:x86state) =
+      let (x:N word) = read src s in
+      let f = (\(a:int32).
+          if word_igt (word 0:int32) a then word_neg a else a) in
+      if dimindex(:N) = 256 then
+        let res:(256)word = usimd8 f (word_zx x) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = usimd4 f (word_zx x) in
         (dest := (word_zx res):N word) s`;;
 
 let x86_VPACKUSWB = new_definition
@@ -1959,6 +1986,28 @@ let x86_VPMOVZXBD = new_definition
         let res:(128)word = usimd4 f (word_zx x:int32) in
         (dest := (word_zx res):N word) s`;;
 
+let x86_VPMOVZXBW = new_definition
+  `x86_VPMOVZXBW dest src (s:x86state) =
+      let (x:M word) = read src s in
+      let f = \(b:byte). word_zx b:16 word in
+      if dimindex(:N) = 256 then
+        let res:(256)word = usimd16 f (word_zx x:int128) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = usimd8 f (word_zx x:int64) in
+        (dest := (word_zx res):N word) s`;;
+
+let x86_VPMOVSXBD = new_definition
+  `x86_VPMOVSXBD dest src (s:x86state) =
+      let (x:M word) = read src s in
+      let f = \(b:byte). word_sx b:int32 in
+      if dimindex(:N) = 256 then
+        let res:(256)word = usimd8 f (word_zx x:int64) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = usimd4 f (word_zx x:int32) in
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPMULHRSW = new_definition
   `x86_VPMULHRSW dest src1 src2 (s:x86state) =
       let (x:N word) = read src1 s
@@ -1978,6 +2027,18 @@ let x86_VPMULHW = new_definition
       let (x:N word) = read src1 s
       and (y:N word) = read src2 s in
       let f = (\(x:16 word) (y:16 word). word_subword (word_mul ((word_sx x):int32) ((word_sx y):int32)) (16,16)) in
+      if dimindex(:N) = 256 then
+        let res:(256)word = simd16 f (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = simd8 f (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s`;;
+
+let x86_VPMULHUW = new_definition
+  `x86_VPMULHUW dest src1 src2 (s:x86state) =
+      let (x:N word) = read src1 s
+      and (y:N word) = read src2 s in
+      let f = (\(x:16 word) (y:16 word). word_subword (word_mul ((word_zx x):int32) ((word_zx y):int32)) (16,16)) in
       if dimindex(:N) = 256 then
         let res:(256)word = simd16 f (word_zx x) (word_zx y) in
         (dest := (word_zx res):N word) s
@@ -2170,6 +2231,19 @@ let x86_VPSHUFB = new_definition
         let res = f128 (word_zx x) (word_zx ix) in
         (dest := (word_zx res):N word) s`;;
 
+let x86_VPSUBB = new_definition
+  `x86_VPSUBB dest src1 src2 (s:x86state) =
+      let x:N word = read src1 s
+      and y:N word = read src2 s in
+      let fb = \(a:byte) (b:byte). word_sub a b in
+      let f128 = \(w1:int128) (w2:int128). simd16 fb w1 w2 in
+      if dimindex(:N) = 256 then
+        let res = simd2 f128 (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s
+      else
+        let res = f128 (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPSUBD = new_definition
   `x86_VPSUBD dest src1 src2 (s:x86state) =
       let (x:N word) = read src1 s
@@ -2325,6 +2399,17 @@ let x86_VPSRLW = new_definition
       else
         let res:(128)word = usimd8 (\z. word_ushr z count) (word_zx x) in
         (dest := (word_zx res):N word) s`;;
+
+let x86_VPTEST = new_definition
+ `x86_VPTEST src1 src2 (s:x86state) =
+        let (x:N word) = read src1 s
+        and (y:N word) = read src2 s in
+        (ZF := (val(word_and x y) = 0) ,,
+         CF := (val(word_and y (word_not x)) = 0) ,,
+         AF := F ,,
+         OF := F ,,
+         PF := F ,,
+         SF := F) s`;;
 
 let x86_VPUNPCKHQDQ = new_definition
   `x86_VPUNPCKHQDQ dest src1 src2 (s:x86state) =
@@ -3322,6 +3407,9 @@ let x86_execute = define
     | VMOVMSKPS dest src ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. x86_VMOVMSKPS (OPERAND32 dest s) (OPERAND256 src s) s)) s
+    | VPMOVMSKB dest src ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. x86_VPMOVMSKB (OPERAND32 dest s) (OPERAND256 src s) s)) s
     | VMOVSHDUP dest src ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. (match operand_size dest with
@@ -3398,6 +3486,15 @@ let x86_execute = define
          | 128 -> (match operand_size src with
                     128 -> x86_VPBROADCASTQ (OPERAND128 dest s) (OPERAND128 src s)
                   |  64 -> x86_VPBROADCASTQ (OPERAND128 dest s) (OPERAND64 src s))) s)) s
+    | VPBROADCASTW dest src ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> (match operand_size src with
+                    128 -> x86_VPBROADCASTW (OPERAND256 dest s) (OPERAND128 src s)
+                  |  16 -> x86_VPBROADCASTW (OPERAND256 dest s) (OPERAND16 src s))
+         | 128 -> (match operand_size src with
+                    128 -> x86_VPBROADCASTW (OPERAND128 dest s) (OPERAND128 src s)
+                  |  16 -> x86_VPBROADCASTW (OPERAND128 dest s) (OPERAND16 src s))) s)) s
     | VPERMD dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3460,6 +3557,11 @@ let x86_execute = define
     | VEXTRACTI128 dest src imm8 ->
        (add_load_event src s ,, add_store_event dest s ,,
        (\s. x86_VEXTRACTI128 (OPERAND128 dest s) (OPERAND256 src s) (OPERAND8 imm8 s) s)) s
+    | VPABSD dest src ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPABSD (OPERAND256 dest s) (OPERAND256 src s)
+        | 128 -> x86_VPABSD (OPERAND128 dest s) (OPERAND128 src s)) s)) s
     | VPACKUSWB dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3493,6 +3595,15 @@ let x86_execute = define
                               (OPERAND256 src2 s)
         | 128 -> x86_VPMADDWD (OPERAND128 dest s) (OPERAND128 src1 s)
                               (OPERAND128 src2 s)) s)) s
+    | VPMOVSXBD dest src ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> (match operand_size src with
+                    128 -> x86_VPMOVSXBD (OPERAND256 dest s) (OPERAND128 src s)
+                  |  64 -> x86_VPMOVSXBD (OPERAND256 dest s) (OPERAND64 src s))
+        | 128 -> (match operand_size src with
+                    128 -> x86_VPMOVSXBD (OPERAND128 dest s) (OPERAND128 src s)
+                  |  32 -> x86_VPMOVSXBD (OPERAND128 dest s) (OPERAND32 src s))) s)) s
     | VPMOVZXBD dest src ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. (match operand_size dest with
@@ -3502,6 +3613,15 @@ let x86_execute = define
         | 128 -> (match operand_size src with
                     128 -> x86_VPMOVZXBD (OPERAND128 dest s) (OPERAND128 src s)
                   |  32 -> x86_VPMOVZXBD (OPERAND128 dest s) (OPERAND32 src s))) s)) s
+    | VPMOVZXBW dest src ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> (match operand_size src with
+                    256 -> x86_VPMOVZXBW (OPERAND256 dest s) (OPERAND256 src s)
+                  |  128 -> x86_VPMOVZXBW (OPERAND256 dest s) (OPERAND128 src s))
+        | 128 -> (match operand_size src with
+                    128 -> x86_VPMOVZXBW (OPERAND128 dest s) (OPERAND128 src s)
+                  |  64 -> x86_VPMOVZXBW (OPERAND128 dest s) (OPERAND64 src s))) s)) s
     | VPMULDQ dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3518,6 +3638,14 @@ let x86_execute = define
                                 (OPERAND256 src2 s)
         | 128 -> x86_VPMULHRSW (OPERAND128 dest s) (OPERAND128 src1 s)
                                 (OPERAND128 src2 s)) s)) s
+    | VPMULHUW dest src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPMULHUW (OPERAND256 dest s) (OPERAND256 src1 s)
+                              (OPERAND256 src2 s)
+        | 128 -> x86_VPMULHUW (OPERAND128 dest s) (OPERAND128 src1 s)
+                              (OPERAND128 src2 s)) s)) s
     | VPMULHW dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3595,6 +3723,14 @@ let x86_execute = define
                                (OPERAND256 src2 s)
         | 128 -> x86_VPCMPGTW (OPERAND128 dest s) (OPERAND128 src1 s)
                                (OPERAND128 src2 s)) s)) s
+    | VPSUBB dest src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPSUBB (OPERAND256 dest s) (OPERAND256 src1 s)
+                            (OPERAND256 src2 s)
+        | 128 -> x86_VPSUBB (OPERAND128 dest s) (OPERAND128 src1 s)
+                            (OPERAND128 src2 s)) s)) s
     | VPSUBD dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3619,6 +3755,11 @@ let x86_execute = define
                             (OPERAND256 src2 s)
         | 128 -> x86_VPSUBW (OPERAND128 dest s) (OPERAND128 src1 s)
                             (OPERAND128 src2 s)) s)) s
+    | VPTEST src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+        (\s. (match operand_size src1 with
+          256 -> x86_VPTEST (OPERAND256 src1 s) (OPERAND256 src2 s)
+        | 128 -> x86_VPTEST (OPERAND128 src1 s) (OPERAND128 src2 s)) s)) s
     | VPSRAW dest src imm8 ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. (match operand_size dest with
@@ -3987,6 +4128,8 @@ let REGISTER_ALIASES =
   r8;   r9;  r10;  r11;  r12;  r13;  r14;  r15;
   eax; ecx; edx; ebx; esp; ebp; esi; edi;
   r8d; r9d; r10d; r11d; r12d; r13d; r14d; r15d;
+  r8w; r9w; r10w; r11w; r12w; r13w; r14w; r15w;
+  r8b; r9b; r10b; r11b; r12b; r13b; r14b; r15b;
   ax; cx; dx; bx; sp; bp; si; di; ah;
   al; ch; cl; dh; dl; bh; bl; spl; bpl; sil; dil;
   xmm0; xmm1; xmm2; xmm3; xmm4; xmm5; xmm6; xmm7;
@@ -4534,6 +4677,7 @@ let x86_VPBLENDW_ALT = EXPAND_SIMD_RULE x86_VPBLENDW;;
 let x86_VPCLMULQDQ_ALT = EXPAND_SIMD_RULE x86_VPCLMULQDQ;;
 let x86_VPBROADCASTD_ALT = EXPAND_SIMD_RULE x86_VPBROADCASTD;;
 let x86_VPBROADCASTQ_ALT = EXPAND_SIMD_RULE x86_VPBROADCASTQ;;
+let x86_VPBROADCASTW_ALT = EXPAND_SIMD_RULE x86_VPBROADCASTW;;
 let x86_VPERMD_ALT = EXPAND_SIMD_RULE x86_VPERMD;;
 let x86_VPERMQ_ALT = EXPAND_SIMD_RULE x86_VPERMQ;;
 let x86_VPERM2I128_ALT = EXPAND_SIMD_RULE x86_VPERM2I128;;
@@ -4552,10 +4696,21 @@ let x86_VPBLENDVB_ALT =
 let x86_VPMADDUBSW_ALT = EXPAND_SIMD_RULE x86_VPMADDUBSW;;
 let x86_VPMADDWD_ALT = EXPAND_SIMD_RULE x86_VPMADDWD;;
 let x86_VMOVMSKPS_ALT = x86_VMOVMSKPS;;
+let x86_VPABSD_ALT = EXPAND_SIMD_RULE x86_VPABSD;;
+let x86_VPMOVMSKB_ALT =
+  (CONV_RULE
+     (TOP_DEPTH_CONV let_CONV THENC
+      ONCE_DEPTH_CONV EXPAND_NSUM_CONV THENC
+      NUM_REDUCE_CONV THENC
+      GEN_REWRITE_CONV TOP_DEPTH_CONV [MULT_CLAUSES])) x86_VPMOVMSKB;;
+let x86_VPMOVSXBD_ALT = EXPAND_SIMD_RULE x86_VPMOVSXBD;;
 let x86_VPMOVZXBD_ALT = EXPAND_SIMD_RULE x86_VPMOVZXBD;;
+let x86_VPMOVZXBW_ALT = EXPAND_SIMD_RULE x86_VPMOVZXBW;;
+let x86_VPTEST_ALT = x86_VPTEST;;
 let x86_VZEROUPPER_ALT = x86_VZEROUPPER;;
 let x86_VPMULDQ_ALT = EXPAND_SIMD_RULE x86_VPMULDQ;;
 let x86_VPMULHRSW_ALT = EXPAND_SIMD_RULE x86_VPMULHRSW;;
+let x86_VPMULHUW_ALT = EXPAND_SIMD_RULE x86_VPMULHUW;;
 let x86_VPMULHW_ALT = EXPAND_SIMD_RULE x86_VPMULHW;;
 let x86_VPMULLD_ALT = EXPAND_SIMD_RULE x86_VPMULLD;;
 let x86_VPMULLW_ALT = EXPAND_SIMD_RULE x86_VPMULLW;;
@@ -4564,6 +4719,7 @@ let x86_VPSLLD_ALT = EXPAND_SIMD_RULE x86_VPSLLD;;
 let x86_VPSLLVD_ALT = EXPAND_SIMD_RULE x86_VPSLLVD;;
 let x86_VPSLLQ_ALT = EXPAND_SIMD_RULE x86_VPSLLQ;;
 let x86_VPSLLW_ALT = EXPAND_SIMD_RULE x86_VPSLLW;;
+let x86_VPSUBB_ALT = EXPAND_SIMD_RULE x86_VPSUBB;;
 let x86_VPSUBD_ALT = EXPAND_SIMD_RULE x86_VPSUBD;;
 let x86_VPSUBQ_ALT = EXPAND_SIMD_RULE x86_VPSUBQ;;
 let x86_VPSUBW_ALT = EXPAND_SIMD_RULE x86_VPSUBW;;
@@ -4598,22 +4754,24 @@ let X86_OPERATION_CLAUSES =
     x86_SAR; x86_SBB_ALT; x86_SET; x86_SHL; x86_SHLD; x86_SHR; x86_SHRD;
     x86_STC; x86_STD; x86_SUB_ALT; x86_TEST; x86_TZCNT; x86_XCHG; x86_XOR;
     (*** AVX2 instructions ***)
-    x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
+    x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHUW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
     x86_VPCMPGTD_ALT; x86_VPCMPGTW_ALT;
     x86_VPEXTRD; x86_VPEXTRQ; x86_VPEXTRW; x86_VPMULLD_ALT; x86_VPMULLW_ALT; x86_VPSUBD_ALT; x86_VPSUBQ_ALT; x86_VPSUBW_ALT; x86_VPXOR;
     x86_VPAND; x86_VPANDN; x86_VPOR; x86_VPSRAD_ALT; x86_VPSRAW_ALT; x86_VPSRLD_ALT; x86_VPSRLDQ_ALT; x86_VPSRLVD_ALT; x86_VPSRLVQ_ALT; x86_VPSRLQ_ALT;
-    x86_VPSRLW_ALT; x86_VPBROADCASTD_ALT; x86_VPSLLD_ALT; x86_VPSLLVD_ALT; x86_VPSLLQ_ALT; x86_VPSLLW_ALT;
+    x86_VPSRLW_ALT; x86_VPBROADCASTD_ALT; x86_VPBROADCASTW_ALT; x86_VPSLLD_ALT; x86_VPSLLVD_ALT; x86_VPSLLQ_ALT; x86_VPSLLW_ALT;
     x86_VMOVDQA_ALT; x86_VMOVDQU_ALT; x86_VPMADDUBSW_ALT; x86_VPMADDWD_ALT; x86_VPMULDQ_ALT; x86_VMOVSHDUP_ALT; x86_VMOVSLDUP_ALT;
     x86_VPACKUSWB_ALT; x86_VPBLENDVB_ALT;
     x86_VPBLENDD_ALT; x86_VPBLENDW_ALT; x86_VPCLMULQDQ_ALT; x86_VPERMD_ALT; x86_VPERMQ_ALT; x86_VPSHUFB_ALT;
     x86_VPUNPCKLQDQ_ALT; x86_VPUNPCKHQDQ_ALT; x86_VPBROADCASTQ_ALT; x86_VPERM2I128_ALT;
-    x86_VMOVMSKPS_ALT; x86_VPMOVZXBD_ALT; x86_VZEROUPPER_ALT;
-    (*** 32-bit backups since the ALT forms are 64-bit only ***)
+    x86_VMOVMSKPS_ALT; x86_VPABSD_ALT; x86_VPMOVMSKB_ALT; x86_VPMOVSXBD_ALT;
+    x86_VPMOVZXBD_ALT; x86_VPMOVZXBW_ALT; x86_VPSUBB_ALT; x86_VPTEST_ALT; x86_VZEROUPPER_ALT;
+    (*** 32/8-bit backups since the ALT forms are 64-bit only ***)
     INST_TYPE[`:32`,`:N`] x86_ADC;
     INST_TYPE[`:32`,`:N`] x86_ADCX;
     INST_TYPE[`:32`,`:N`] x86_ADOX;
     INST_TYPE[`:32`,`:N`] x86_ADD;
     INST_TYPE[`:32`,`:N`] x86_CMP;
+    INST_TYPE[`:8`,`:N`] x86_CMP;
     INST_TYPE[`:32`,`:N`] x86_SBB;
     INST_TYPE[`:32`,`:N`] x86_SUB];;
 
@@ -4649,7 +4807,7 @@ let X86_THM =
         failwith ("X86_THM: Cannot decompose PC expression: " ^
                   string_of_term (concl pc_th)) in
     let _ = if !x86_print_log then
-      let opt = Option.get execth2.(pc_ofs) in
+      let opt = option_get execth2.(pc_ofs) in
       (* opt: |- forall ... bytes_loaded .. ==> x86_decode .. (INST ..) *)
       let t = snd (strip_forall (concl (opt))) in
       let t = snd (dest_imp t) in
@@ -4660,7 +4818,7 @@ let X86_THM =
     CONV_RULE
       (ONCE_DEPTH_CONV
         (REWR_CONV (GSYM ADD_ASSOC) THENC RAND_CONV NUM_REDUCE_CONV))
-      (MATCH_MP th (MATCH_MP (Option.get execth2.(pc_ofs)) loaded_mc_th));;
+      (MATCH_MP th (MATCH_MP (option_get execth2.(pc_ofs)) loaded_mc_th));;
 
 let X86_ENSURES_SUBLEMMA_TAC =
   ENSURES_SUBLEMMA_TAC o MATCH_MP bytes_loaded_update o CONJUNCT1;;
@@ -4751,14 +4909,14 @@ let X86_CONV (decode_ths:thm option array) ths tm =
     (fun th ->
       let c = concl th in
       is_eq c && is_read_rip (fst (dest_eq c)))
-    ths with _ ->
+    ths with Failure _ ->
       failwith "X86_CONV: can't find `read RIP .. = ..` from ths" in
 
   (* Find `bytes_loaded ..`. *)
   let bytes_loaded_mc_ths:thm list =
     (* Pick the _mc const from decode_ths, if decode_ths[0] != None, which is
        likely to be true. *)
-    let the_mc:term option = Option.bind decode_ths.(0)
+    let the_mc:term option = option_bind decode_ths.(0)
       (fun th ->
         (* th is `forall .., bytes_loaded ... _mc ==> x86_decode ..`. *)
         let t = concl th in
@@ -4772,11 +4930,11 @@ let X86_CONV (decode_ths:thm option array) ths tm =
         let cc = concl th in is_comb cc && (
         let c,args = strip_comb (concl th) in
         c = bytes_loaded_tm &&
-          (the_mc = None || last args = Option.get the_mc)))
+          (the_mc = None || last args = option_get the_mc)))
       ths in
     if res = [] then failwith
         ("X86_CONV: can't find `bytes_loaded .. .. " ^
-          (if the_mc <> None then string_of_term (Option.get the_mc) else "..")
+          (if the_mc <> None then string_of_term (option_get the_mc) else "..")
           ^ "` from ths")
     else res in
 
@@ -4786,8 +4944,8 @@ let X86_CONV (decode_ths:thm option array) ths tm =
   (* Pick the right rules. It will be a singleton in most cases... *)
   let x86_execute_case_rules:thm list =
     let ts = find_terms is_const (concl eth) in
-    List.filter_map (fun t ->
-      try Some ((assoc (name_of t) X86_EXECUTE_CASES)) with _ -> None) ts in
+    filter_map (fun t ->
+      try Some ((assoc (name_of t) X86_EXECUTE_CASES)) with Failure _ -> None) ts in
   (K eth THENC
    PURE_ONCE_REWRITE_CONV(x86_execute_case_rules) THENC
    REWRITE_CONV[add_store_event;add_load_event;SEQ_ID] THENC
@@ -5168,7 +5326,11 @@ let RIP_PLUS_CONV =
 let X86_SUBROUTINE_SIM_TAC ?(is_safety_thm=false)
     (machinecode,execth,offset,submachinecode,subth) =
   let subimpth =
-      BYTES_LOADED_SUBPROGRAM_RULE machinecode submachinecode offset in
+    try
+      BYTES_LOADED_SUBPROGRAM_RULE machinecode submachinecode offset
+    with Failure _ ->
+      failwith ("X86_SUBROUTINE_SIM_TAC: submachinecode (4th of input tuple) isn't " ^
+        "at offset " ^ (string_of_int offset) ^ " of machinecode (1st of tuple)") in
   fun ilist0 n ->
     let sname = "s"^string_of_int(n-1)
     and sname' = "s"^string_of_int n in
@@ -5176,7 +5338,7 @@ let X86_SUBROUTINE_SIM_TAC ?(is_safety_thm=false)
     and svar0 = mk_var("s",`:x86state`) in
     let ilist = map (vsubst[svar,svar0]) ilist0 in
     let subth_specl =
-      try SPECL ilist subth with _ -> begin
+      try SPECL ilist subth with Failure _ -> begin
         (if (!x86_print_log) then
           (Printf.printf "ilist and subth's forall vars do not match\n";
            Printf.printf "ilist: [%s]\n" (end_itlist
@@ -5349,7 +5511,7 @@ let check_forallvars_tac:tactic =
   let find_and_check (lhs_pat:term) (t:term) (quants:term list) =
     let read_eq = try Some (find_term (fun t ->
       is_eq t && can (term_match [] lhs_pat) (lhs t)) t)
-      with _ -> None in
+      with Failure _ -> None in
     match read_eq with
     | Some read_eq ->
       let the_var = rhs read_eq in
@@ -5784,7 +5946,7 @@ let WINDOWS_X86_WRAP_STACK_TAC =
     let is_nargle t = is_comb t && rator t = argy in
     fun t -> try
         (length o dest_list o rand o find_term is_nargle) t
-      with _ -> failwith "Could not find WINDOWS_C_ARGUMENTS" in
+      with Failure _ -> failwith "Could not find WINDOWS_C_ARGUMENTS" in
   fun winmc stdmc coreth reglist stdstackoff (asl,w) ->
     let stdregs = dest_list reglist in
     let n =

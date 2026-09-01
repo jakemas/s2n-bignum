@@ -511,6 +511,10 @@ let decode = new_definition `!w:int32. decode w =
     // BIT
     SOME (arm_BIT (QREG' Rd) (QREG' Rn) (QREG' Rm) (if q then 128 else 64))
 
+  | [0:1; q; 0b101110111:9; Rm:5; 0b000111:6; Rn:5; Rd:5] ->
+    // BIF
+    SOME (arm_BIF (QREG' Rd) (QREG' Rn) (QREG' Rm) (if q then 128 else 64))
+
   // Two sizes of FCSEL, not allowing FP16 case at all
   | [0b00011110:8; 0b00:2; 0b1:1; Rm:5; cond:4; 0b11:2; Rn:5; Rd:5] ->
     SOME (arm_FCSEL (QREG' Rd) (QREG' Rn) (QREG' Rm) (Condition cond) 32)
@@ -731,6 +735,14 @@ let decode = new_definition `!w:int32. decode w =
     else
       let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
       SOME (arm_REV64_VEC (QREG' Rd) (QREG' Rn) (val esize))
+
+  | [0:1; q; 0b101110:6; size:2; 0b100000000010:12; Rn:5; Rd:5] ->
+    // REV32
+    if ~q then NONE // datasize = 64 is unsupported yet
+    else if size = (word 0b10: (2)word) \/ size = (word 0b11: (2)word) then NONE // "UNDEFINED"
+    else
+      let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
+      SOME (arm_REV32_VEC (QREG' Rd) (QREG' Rn) (val esize))
 
   | [0b01101110000:11; imm5:5; 0:1; imm4:4; 1:1; Rn:5; Rd:5] ->
     // INS, or "MOV (element)"
@@ -1382,7 +1394,7 @@ let ALIAS_CONV =
       let th' = INST_TYPE (map (fun ty' -> ty,ty')
         (type_vars_in_term (concl th))) th in
       try f (CONV_RULE (CHANGED_CONV (REWRITE_CONV [SYM xth])) th')
-      with _ -> I in
+      with Failure _ -> I in
     g `:64` XZR_ZR o g `:32` WZR_ZR o f th in
   let f th =
     if can (find_term
@@ -1418,8 +1430,9 @@ let ALIAS_CONV =
   self := ONCE_DEPTH_CONV (REWRITES_CONV net);
   OPERAND_ALIAS_CONV THENC ALIAS_CONV;;
 
+open Compute;;
+
 let PURE_DECODE_CONV =
-  let open Compute in
 
   let custom_word_red_conv_list =
     (* No WORD_IWORD_CONV *)
@@ -1494,12 +1507,12 @@ let PURE_DECODE_CONV =
       let c = concl th in (* c should be: `decode .. = SOME ...` *)
       let r,_ = dest_comb (rhs c) in
       if is_const r && name_of r = "SOME" then th else failwith ""
-    with _ -> failwith ("PURE_DECODE_CONV: " ^ (string_of_term t));;
+    with Failure _ -> failwith ("PURE_DECODE_CONV: " ^ (string_of_term t));;
 
 let DECODE_CONV tm =
   let th = PURE_DECODE_CONV tm in
   try CONV_RULE (RAND_CONV (RAND_CONV ALIAS_CONV)) th
-  with _ -> th;;
+  with Failure _ -> th;;
 
 (* ------------------------------------------------------------------------- *)
 (* Testing and preparation.                                                  *)
@@ -1899,10 +1912,10 @@ let term_of_relocs_arm, assert_relocs =
           Printf.eprintf "  actual opcode: `%s`\n" (string_of_term reloc_opcode);
           Printf.eprintf "  asserting opcode: `%s`\n" (string_of_term lhs);
           Printf.eprintf "  PC: %d (0x%x)\n" pc pc;
-          assert false)
+          failwith "assert_reloc_maker")
         in
         pc+4, next_insns
-      with _ -> failwith ("could not check opcode " ^ (string_of_term reloc_opcode)) in
+      with Failure _ -> failwith ("could not check opcode " ^ (string_of_term reloc_opcode)) in
 
     (* opcode_fn is the large OCaml function printed by
        print_literal_relocs_from_elf *)

@@ -461,6 +461,10 @@ extern void bignum_mod_n256_alt (uint64_t z[4], uint64_t k, const uint64_t *x);
 extern void bignum_mod_n256_4 (uint64_t z[4], const uint64_t x[4]);
 
 /* Reduce modulo group order, z := x mod n_256k1 */
+/* Input x[k]; output z[4] */
+extern void bignum_mod_n256k1 (uint64_t z[4], uint64_t k, const uint64_t *x);
+
+/* Reduce modulo group order, z := x mod n_256k1 */
 /* Input x[4]; output z[4] */
 extern void bignum_mod_n256k1_4 (uint64_t z[4], const uint64_t x[4]);
 
@@ -499,6 +503,10 @@ extern void bignum_mod_p256_alt (uint64_t z[4], uint64_t k, const uint64_t *x);
 /* Reduce modulo field characteristic, z := x mod p_256 */
 /* Input x[4]; output z[4] */
 extern void bignum_mod_p256_4 (uint64_t z[4], const uint64_t x[4]);
+
+/* Reduce modulo field characteristic, z := x mod p_256k1 */
+/* Input x[k]; output z[4] */
+extern void bignum_mod_p256k1 (uint64_t z[4], uint64_t k, const uint64_t *x);
 
 /* Reduce modulo field characteristic, z := x mod p_256k1 */
 /* Input x[4]; output z[4] */
@@ -1013,6 +1021,13 @@ extern void mldsa_ntt(int32_t a[256], const int32_t zetas[624]);
 /* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
 extern void mldsa_nttunpack(int32_t a[256]);
 
+/* Uniform rejection sampling for ML-DSA: extract 23-bit coefficients from */
+/* 3-byte-packed input, keeping only those strictly less than q = 8380417. */
+/* Returns the number of accepted coefficients (at most 256). */
+/* Inputs buf[840] (uint8_t), table[256] (uint64_t lookup table); */
+/* output r[256] (int32_t). */
+extern uint32_t mldsa_rej_uniform_VARIABLE_TIME_x86(int32_t r[256], const uint8_t buf[840], const uint64_t table[256]);
+
 /* Pointwise multiplication of polynomials in NTT domain (Montgomery form) for ML-DSA */
 /* Inputs a[256], b[256] (signed 32-bit words); output r[256] (signed 32-bit words) */
 extern void mldsa_pointwise(int32_t r[256], const int32_t a[256], const int32_t b[256]);
@@ -1044,10 +1059,35 @@ extern void mldsa_pointwise_acc_l7(int32_t r[256], const int32_t a[1792], const 
 /* Pointwise multiplication with accumulation for ML-DSA L7, x86 version */
 /* Inputs a[1792], b[1792], qdata[16] (signed 32-bit words); output c[256] (signed 32-bit words) */
 extern void mldsa_pointwise_acc_l7_x86(int32_t c[256], const int32_t a[1792], const int32_t b[1792], const int32_t qdata[16]);
+/* Conditional addition of Q to polynomial coefficients for ML-DSA */
+/* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
+extern void mldsa_caddq(int32_t a[256]);
 
 /* Canonical reduction of polynomial coefficients for ML-DSA */
+/* Result is centered, -6283009 <= r <= 6283008, and congruent mod 8380417 */
+/* Assumes each coefficient is <= 0x7fbfffff (else the reduction overflows) */
 /* Input a[256] (signed 32-bit words); output a[256] (signed 32-bit words) */
 extern void mldsa_reduce(int32_t a[256]);
+
+/* Use hint to correct high bits of decomposition for ML-DSA (parameter sets 65/87) */
+/* Inputs a[256], h[256] (signed 32-bit words); output b[256] (signed 32-bit words) */
+extern void mldsa_poly_use_hint_32(int32_t b[256], const int32_t a[256], const int32_t h[256]);
+
+/* Use hint to correct high bits of decomposition for ML-DSA (parameter set 44) */
+/* Inputs a[256], h[256] (signed 32-bit words); output b[256] (signed 32-bit words) */
+extern void mldsa_poly_use_hint_88(int32_t b[256], const int32_t a[256], const int32_t h[256]);
+
+/* Rejection sampling for ML-DSA secret key (eta = 2; parameter sets 44/87) */
+/* Inputs buf[buflen], buflen, table[4096] (uint8_t); output r[256] (signed 32-bit words) */
+extern uint64_t mldsa_rej_uniform_eta2_VARIABLE_TIME(int32_t r[256], const uint8_t *buf, unsigned buflen, const uint8_t table[4096]);
+
+/* Rejection sampling for ML-DSA secret key (eta = 4; parameter set 65) */
+/* Inputs buf[buflen], buflen, table[4096] (uint8_t); output r[256] (signed 32-bit words) */
+extern uint64_t mldsa_rej_uniform_eta4_VARIABLE_TIME(int32_t r[256], const uint8_t *buf, unsigned buflen, const uint8_t table[4096]);
+
+/* Uniform rejection sampling for ML-DSA */
+/* Inputs *buf (unsigned bytes), buflen, table (unsigned bytes); output r[256] (signed 32-bit words), return */
+extern uint64_t mldsa_rej_uniform_VARIABLE_TIME(int32_t r[256],const uint8_t *buf,uint64_t buflen,const uint8_t *table);
 
 /* Scalar product of 2-element polynomial vectors in NTT domain, with mulcache */
 /* Inputs a[512], b[512], bt[256] (signed 16-bit words); output r[256] (signed 16-bit words) */
